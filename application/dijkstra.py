@@ -1,4 +1,4 @@
-import graphes
+from graphes import *
 from math import inf
 
 def dijkstra(graph, start, stop):
@@ -22,10 +22,23 @@ def dijkstra(graph, start, stop):
         if plus_proche is None:
             break
         detail[plus_proche]["traité"] = True
-        
+
+        if plus_proche == stop:
+            break
+
         for voisin in graph.aretes[plus_proche]:
             distance = detail[plus_proche]["distance"] + graph.aretes[plus_proche][voisin]
             if distance < detail[voisin]["distance"]:
                 detail[voisin]["distance"] = distance
                 detail[voisin]["precedent"] = plus_proche
-        return detail
+    chemin = []
+    actuel = stop
+    while actuel != start:
+        chemin.append(actuel)
+        actuel = detail[actuel]["precedent"]
+    chemin.append(actuel)
+    chemin.reverse()
+    return chemin
+
+resultat = dijkstra(test, "A", "C")
+print(resultat)
