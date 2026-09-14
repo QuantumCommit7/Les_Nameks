@@ -36,5 +36,7 @@ test.ajouter_noeud('C')
 test.ajouter_arete('A', 'B', 15)
 test.ajouter_arete('B', 'C', 7)
 test.ajouter_arete('C', 'A', 5)
-print(json.dumps(test.noeuds, indent=4))
-print(json.dumps(test.aretes, indent=4))
+
+if __name__ == "__main__":
+    print(json.dumps(test.noeuds, indent=4))
+    print(json.dumps(test.aretes, indent=4))

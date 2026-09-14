@@ -2,6 +2,8 @@ from graphes import *
 from math import inf
 
 def dijkstra(graph, start, stop):
+    if start not in graph.noeuds or stop not in graph.noeuds:
+        return f"les noeuds n'existent pas dans le graphe, créer les avant de débuter"
     detail = {}
     plus_proche = None
     for elt in graph.noeuds:
@@ -31,6 +33,10 @@ def dijkstra(graph, start, stop):
             if distance < detail[voisin]["distance"]:
                 detail[voisin]["distance"] = distance
                 detail[voisin]["precedent"] = plus_proche
+
+    if detail[stop]["distance"] == inf:
+        return f"aucun lien existant, connexion impossible"
+
     chemin = []
     actuel = stop
     while actuel != start:
@@ -40,5 +46,8 @@ def dijkstra(graph, start, stop):
     chemin.reverse()
     return chemin
 
-resultat = dijkstra(test, "A", "C")
-print(resultat)
+if __name__ == "__main__":
+    resultat = dijkstra(test, "A", "C")
+    print(resultat)
+    resultat = dijkstra(test, "A", "D")
+    print(resultat)
