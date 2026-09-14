@@ -1,4 +1,5 @@
 import graphes
+from math import inf
 
 def dijkstra(graph, start, stop):
     detail = {}
@@ -18,12 +19,13 @@ def dijkstra(graph, start, stop):
                     plus_proche = elt
                 if detail[elt]["distance"] <= detail[plus_proche]["distance"]:
                     plus_proche = elt
-        detail[plus_proche]["traité"] = True
-        if plus_proche == stop:
+        if plus_proche is None:
             break
-
+        detail[plus_proche]["traité"] = True
+        
         for voisin in graph.aretes[plus_proche]:
             distance = detail[plus_proche]["distance"] + graph.aretes[plus_proche][voisin]
             if distance < detail[voisin]["distance"]:
                 detail[voisin]["distance"] = distance
                 detail[voisin]["precedent"] = plus_proche
+        return detail
