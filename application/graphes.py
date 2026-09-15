@@ -45,14 +45,14 @@ class Graphes:
             self.aretes[arrivee].update({depart: poids})
 
 def main():
-    test = Graphes()
-    test.ajouter_noeud('A')
-    test.ajouter_noeud('B')
-    test.ajouter_noeud('C')
-    test.ajouter_arete('A', 'B', 15)
-    test.ajouter_arete('B', 'C', 7)
-    test.ajouter_arete('C', 'A', 5)
-    print(json.dumps(test.noeuds, indent=4))
+    test = Graphes() # on crée une instance de Graphes affectée à une variable test
+    test.ajouter_noeud('A') # ajout de 'A'
+    test.ajouter_noeud('B') # ajout de 'B'
+    test.ajouter_noeud('C') # ajout de 'C'
+    test.ajouter_arete('A', 'B', 15) # on crée un lien entre A et B avec un poid de 15
+    test.ajouter_arete('B', 'C', 7) # on crée un lien entre B et C avec un poid de 7
+    test.ajouter_arete('C', 'A', 5) # on crée un lien entre C et A avec un poid de 5
+    print(json.dumps(test.noeuds, indent=4)) # librairie json afin de lire avec plus de facilité le gros dictionnaire de dictionnaires
     print(json.dumps(test.aretes, indent=4))
 
 if __name__ == "__main__":
