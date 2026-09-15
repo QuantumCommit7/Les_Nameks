@@ -1,7 +1,20 @@
 from graphes import *
-from math import inf
+from math import inf # inportation de l'infini pour définir dans dijkstra la distance a l'initialisaton du nœud
 
 def dijkstra(graph, start, stop):
+    """
+    Fonction basée sur l'algorithme de dijkstra. Il va permettre de
+    trouver le chemin le plus court dans un graphe pondéré d'un point A
+    à un point B.
+
+    Args:
+            graph: Objet de la class Graph.
+            start: noeud correspondant au point A
+            stop: noeud correspondant au point B
+
+    Returns:
+        renvoie la liste du parcours pour rejoindre le point A au point B le plus rapidement
+    """
     if start not in graph.noeuds or stop not in graph.noeuds:
         return f"les noeuds n'existent pas dans le graphe, créer les avant de débuter"
     detail = {}
