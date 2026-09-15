@@ -4,11 +4,26 @@ import json # On importe json pour simplement tester les graphes, pour avoir un 
 class Graphes:
     """Classe maitresse, elle permet d'initialiser un graphe"""
     def __init__(self):
+        """
+        Ce constructeur va créer deux dictionnaires vides
+        le premier self.noeuds va serveur à ajouter les noeuds
+        le second self.aretes va servir à créer les liens entre les noeuds
+        """
         self.noeuds = {}
         self.aretes = {}
 
-    def ajouter_noeud(self, noeud):
-        """Ajouter un noeud au graphe"""
+    def ajouter_noeud(self, noeud : str):
+        """
+        Cette methode va servir à créer un noeud dans notre instance de Graphes
+        l'argument noeud doit être de type string, si le type est différent une erreur sera renvoyée
+        Une seconde vérification aura lieu, elle vérifiera que le noeud donné n'existe pas déjà.
+        Une fois toutes les vérifications passées, on update le dictionnaire pour ajouter une nouvelle entrée,
+        qui aura comme valeur l'argument noeud.
+        """
+        if not isinstance(noeud, str):
+            raise TypeError("Votre noeud n'est pas un string")
+        if noeud in self.noeuds:
+            raise ValueError("Ce noeud existe déjà")
         self.noeuds.update({noeud: noeud})
 
     def ajouter_arete(self, depart, arrivee, poids):
@@ -29,14 +44,16 @@ class Graphes:
             self.aretes[depart].update({arrivee: poids})
             self.aretes[arrivee].update({depart: poids})
 
-test = Graphes()
-test.ajouter_noeud('A')
-test.ajouter_noeud('B')
-test.ajouter_noeud('C')
-test.ajouter_arete('A', 'B', 15)
-test.ajouter_arete('B', 'C', 7)
-test.ajouter_arete('C', 'A', 5)
-
-if __name__ == "__main__":
+def main():
+    test = Graphes()
+    test.ajouter_noeud('A')
+    test.ajouter_noeud('B')
+    test.ajouter_noeud('C')
+    test.ajouter_arete('A', 'B', 15)
+    test.ajouter_arete('B', 'C', 7)
+    test.ajouter_arete('C', 'A', 5)
     print(json.dumps(test.noeuds, indent=4))
     print(json.dumps(test.aretes, indent=4))
+
+if __name__ == "__main__":
+    main()
