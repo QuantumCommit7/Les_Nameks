@@ -1,4 +1,3 @@
-from math import *
 import json # On importe json pour simplement tester les graphes, pour avoir un format plus lisible
 
 class Graphes:
@@ -43,7 +42,30 @@ class Graphes:
 
             self.aretes[depart].update({arrivee: poids})
             self.aretes[arrivee].update({depart: poids})
+        return None
 
+    def definir_feu(self, noeud, phases):
+        if noeud not in self.noeuds:
+            raise ValueError("le noeud n'existe pas")
+        self.noeuds[noeud] = {"phases": phases, "phase_active": 0}
+
+    def est_vert(self, noeud, venant_de):
+        if noeud not in self.noeuds:
+            raise ValueError("le noeud n'existe pas")
+        if not isinstance(self.noeuds[noeud], dict):
+            return True
+        phase_active = self.noeuds[noeud]["phase_active"]
+        directions_autorises = self.noeuds[noeud]["phases"][phase_active]
+        return venant_de in directions_autorises
+
+    def changer_phase(self, noeud, nouvelle_phase):
+        if noeud not in self.noeuds:
+            raise ValueError("le noeud n'existe pas")
+        if not isinstance(self.noeuds[noeud], dict):
+            raise TypeError(f"le noeud {noeud} n'a pas de feu configuré")
+        if nouvelle_phase < 0 or nouvelle_phase > len(self.noeuds[noeud]["phases"]):
+            raise ValueError("le nouvelle_phase n'est pas 0 ou 1")
+        self.noeuds[noeud]["phase_active"] = nouvelle_phase
 if __name__ == "__main__":
     test = Graphes() # on crée une instance de Graphes affectée à une variable test
     test.ajouter_noeud('A') # ajout de 'A'
@@ -52,5 +74,10 @@ if __name__ == "__main__":
     test.ajouter_arete('A', 'B', 15) # on crée un lien entre A et B avec un poid de 15
     test.ajouter_arete('B', 'C', 7) # on crée un lien entre B et C avec un poid de 7
     test.ajouter_arete('C', 'A', 5) # on crée un lien entre C et A avec un poid de 5
+    test.definir_feu('A', [['B'], ['C']])
+    print(test.est_vert('A', 'B'))
+    print(test.est_vert('A', 'C'))
+    test.changer_phase('A', 1)
+    print(test.noeuds['A'])
     print(json.dumps(test.noeuds, indent=4)) # librairie json afin de lire avec plus de facilité le gros dictionnaire de dictionnaires
     print(json.dumps(test.aretes, indent=4))
