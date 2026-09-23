@@ -1,4 +1,5 @@
 from dijkstra import *
+from graphes import Graphes
 
 class Vehicule:
     def __init__(self, graphe,  depart, vitesse, destination, avancement=0, est_urgent=False):
@@ -12,13 +13,20 @@ class Vehicule:
         self.index_chemin = 0
         self.arrivee = self.chemin[self.index_chemin + 1]
 
-    def avancer(self):
+    def avancer(self, graphe):
         self.avancement += self.vitesse
         if self.avancement >= 1:
-            self.avancement -= 1
-            self.depart = self.arrivee
-            self.index_chemin += 1
-            if self.index_chemin + 1 >= len(self.chemin):
-                return "arrive"
-            self.arrivee = self.chemin[self.index_chemin + 1]
-        return "en cours"
+            situation = graphe.est_vert(self.arrivee, self.depart)
+            if situation == True:
+                self.avancement -= 1
+                self.depart = self.arrivee
+                self.index_chemin += 1
+                if self.index_chemin + 1 >= len(self.chemin):
+                    return "arrive"
+                self.arrivee = self.chemin[self.index_chemin + 1]
+                return "en_cours"
+            else:
+                self.avancement =  # à toi de compléter : quelle valeur pour "bloqué au carrefour" ?
+                return ...  # à toi de compléter : quelle chaîne de retour pour signaler l'attente ?
+        return "en_cours"
+
