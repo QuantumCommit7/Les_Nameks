@@ -66,6 +66,7 @@ class Graphes:
         if nouvelle_phase < 0 or nouvelle_phase > len(self.noeuds[noeud]["phases"]):
             raise ValueError("le nouvelle_phase n'est pas 0 ou 1")
         self.noeuds[noeud]["phase_active"] = nouvelle_phase
+        
 if __name__ == "__main__":
     test = Graphes() # on crée une instance de Graphes affectée à une variable test
     test.ajouter_noeud('A') # ajout de 'A'
