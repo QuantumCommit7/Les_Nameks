@@ -1,5 +1,4 @@
 from dijkstra import *
-from graphes import Graphes
 
 class Vehicule:
     def __init__(self, graphe,  depart, vitesse, destination, avancement=0, est_urgent=False):
@@ -15,18 +14,30 @@ class Vehicule:
 
     def avancer(self, graphe):
         self.avancement += self.vitesse
+        if self.est_urgent and self.avancement >= 0.7:
+            if graphe.est_vert(self.arrivee, self.depart) == False:
+                phases = graphe.noeuds[self.arrivee]["phases"]
+                index_trouve = None
+                i = 0
+                for sous_liste in phases:
+                    if self.depart in sous_liste:
+                        index_trouve = i
+                    i = i + 1
+                if index_trouve is not None:
+                    graphe.changer_phase(self.arrivee, index_trouve)
+
         if self.avancement >= 1:
             situation = graphe.est_vert(self.arrivee, self.depart)
-            if situation == True:
+            if situation:
                 self.avancement -= 1
                 self.depart = self.arrivee
                 self.index_chemin += 1
                 if self.index_chemin + 1 >= len(self.chemin):
                     return "arrive"
                 self.arrivee = self.chemin[self.index_chemin + 1]
-                return "en_cours"
+                return "en cours"
             else:
-                self.avancement =  # à toi de compléter : quelle valeur pour "bloqué au carrefour" ?
-                return ...  # à toi de compléter : quelle chaîne de retour pour signaler l'attente ?
-        return "en_cours"
+                self.avancement =  1
+                return "attends feu"
+        return "en cours"
 
