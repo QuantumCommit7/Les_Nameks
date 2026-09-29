@@ -58,9 +58,3 @@ def dijkstra(graph, start, stop):
     chemin.append(actuel)
     chemin.reverse()
     return chemin
-
-if __name__ == "__main__":
-    resultat = dijkstra(test, "A", "C")
-    print(resultat)
-    resultat = dijkstra(test, "A", "D")
-    print(resultat)

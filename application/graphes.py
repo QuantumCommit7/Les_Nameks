@@ -63,7 +63,7 @@ class Graphes:
             raise ValueError("le noeud n'existe pas")
         if not isinstance(self.noeuds[noeud], dict):
             raise TypeError(f"le noeud {noeud} n'a pas de feu configuré")
-        if nouvelle_phase < 0 or nouvelle_phase > len(self.noeuds[noeud]["phases"]):
+        if nouvelle_phase < 0 or nouvelle_phase >= len(self.noeuds[noeud]["phases"]):
             raise ValueError("le nouvelle_phase n'est pas 0 ou 1")
         self.noeuds[noeud]["phase_active"] = nouvelle_phase
         

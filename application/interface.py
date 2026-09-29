@@ -1,8 +1,9 @@
 import sys
 from graphes import Graphes
-from PyQt6.QtWidgets import QApplication, QInputDialog, QMainWindow, QGraphicsScene, QGraphicsView
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QInputDialog, QMainWindow, QGraphicsScene, QGraphicsView, QPushButton, QWidget, QVBoxLayout
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor
+from vehicule import Vehicule
 
 class SceneGraphe(QGraphicsScene):
     def __init__(self, graphe: Graphes):
@@ -49,6 +50,7 @@ class SceneGraphe(QGraphicsScene):
 
         self.graphe.ajouter_arete(depart, arrivee, poids)
         self.dessiner_arete(depart, arrivee)
+        print(self.graphe.aretes)
 
     def creer_noeud(self, x, y):
         nom, valide = QInputDialog.getText(None, "Nouveau nœud", "Nom du nœud :")
@@ -59,6 +61,7 @@ class SceneGraphe(QGraphicsScene):
             return
         try:
             self.graphe.ajouter_noeud(nom)
+            print(self.graphe.noeuds)
         except ValueError:
             print(f"le noeud {nom} existe déjà")
             return
@@ -104,11 +107,65 @@ class FenetrePrincipale(QMainWindow):
         self.resize(1000, 700)
 
         self.graphe = Graphes()
+        self.vehicules = []
         self.scene = SceneGraphe(self.graphe)
         self.view = QGraphicsView(self.scene)
 
-        self.setCentralWidget(self.view)
+        self.bouton_vehicule = QPushButton("Créer véhicule")
+        self.bouton_vehicule.clicked.connect(self.creer_vehicule)
 
+        conteneur = QWidget()
+        layout = QVBoxLayout()
+
+        layout.addWidget(self.bouton_vehicule)
+        layout.addWidget(self.view)
+
+        conteneur.setLayout(layout)
+
+        self.setCentralWidget(conteneur)
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.tick)
+        self.timer.start(300)
+
+    def creer_vehicule(self):
+        depart, valide = QInputDialog.getItem(self, "Départ", "Choisissez le départ :", list(self.graphe.noeuds.keys()), 0, False)
+        if valide == False:
+            return
+        print(f"Départ choisi : {depart}")
+
+        destination, valide = QInputDialog.getItem(
+            self,
+            "Destination",
+            "Choisissez la destination :",
+            list(self.graphe.noeuds.keys()),
+            0,
+            False
+        )
+
+        if valide == False:
+            return
+
+        print(f"Destination choisie : {destination}")
+
+        vitesse, valide = QInputDialog.getDouble(
+            self,
+            "Vitesse",
+            "Choisissez la vitesse :",
+            0.1,
+            0.01,
+            1.0,
+            2
+        )
+
+        if valide == False:
+            return
+
+        print(f"Vitesse choisie : {vitesse}")
+
+    def tick(self):
+        # print("tick")
+        pass
 
 app = QApplication(sys.argv)
 fenetre = FenetrePrincipale()
