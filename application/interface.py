@@ -1,9 +1,10 @@
 import sys
 from graphes import Graphes
-from PyQt6.QtWidgets import QApplication, QInputDialog, QMainWindow, QGraphicsScene, QGraphicsView, QPushButton, QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QInputDialog, QMainWindow, QGraphicsScene, QGraphicsView, QPushButton, QWidget, QVBoxLayout, QGraphicsEllipseItem
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor
 from vehicule import Vehicule
+import random
 
 class SceneGraphe(QGraphicsScene):
     def __init__(self, graphe: Graphes):
@@ -163,9 +164,41 @@ class FenetrePrincipale(QMainWindow):
 
         print(f"Vitesse choisie : {vitesse}")
 
+        vehicule = Vehicule(
+            self.graphe,
+            depart,
+            vitesse,
+            destination
+        )
+
+        self.vehicules.append(vehicule)
+        x, y = self.scene.positions[depart]
+
+        voiture_graphique = QGraphicsEllipseItem(x + 20, y - 7, 14, 14)
+
+        couleur = QColor(
+            random.randint(0, 255),
+            random.randint(0, 255),
+            random.randint(0, 255)
+        )
+
+        voiture_graphique.setBrush(QBrush(couleur))
+
+        self.scene.addItem(voiture_graphique)
+        print(f"Position du véhicule : {x}, {y}")
+        print(f"Véhicule créé : {depart} -> {destination}")
+
     def tick(self):
-        # print("tick")
-        pass
+        vehicules_encore_actifs = []
+
+        for vehicule in self.vehicules:
+            resultat = vehicule.avancer(self.graphe)
+            print(resultat)
+
+            if resultat != "arrive":
+                vehicules_encore_actifs.append(vehicule)
+
+        self.vehicules = vehicules_encore_actifs
 
 app = QApplication(sys.argv)
 fenetre = FenetrePrincipale()
