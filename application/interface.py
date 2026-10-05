@@ -101,6 +101,15 @@ class SceneGraphe(QGraphicsScene):
 
         self.addLine(x1_bord, y1_bord, x2_bord, y2_bord)
 
+    def dessiner_feu(self, noeud):
+        x, y = self.positions[noeud]
+
+        feu = self.addEllipse(x + 10, y - 25, 12, 12)
+        feu.setBrush(QBrush(QColor("red")))
+
+        return feu
+
+
 class FenetrePrincipale(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -115,10 +124,14 @@ class FenetrePrincipale(QMainWindow):
         self.bouton_vehicule = QPushButton("Créer véhicule")
         self.bouton_vehicule.clicked.connect(self.creer_vehicule)
 
+        self.bouton_feu = QPushButton("Configurer un feu")
+        self.bouton_feu.clicked.connect(self.configurer_feu)
+
         conteneur = QWidget()
         layout = QVBoxLayout()
 
         layout.addWidget(self.bouton_vehicule)
+        layout.addWidget(self.bouton_feu)
         layout.addWidget(self.view)
 
         conteneur.setLayout(layout)
@@ -129,10 +142,51 @@ class FenetrePrincipale(QMainWindow):
         self.timer.timeout.connect(self.tick)
         self.timer.start(300)
 
-    def creer_vehicule(self):
-        depart, valide = QInputDialog.getItem(self, "Départ", "Choisissez le départ :", list(self.graphe.noeuds.keys()), 0, False)
+    def configurer_feu(self):
+        noeud, valide = QInputDialog.getItem(
+            self,
+            "Configurer un feu",
+            "Choisissez le nœud :",
+            list(self.graphe.noeuds.keys()),
+            0,
+            False
+        )
+
         if valide == False:
             return
+
+        phases = []
+
+        for i in range(2):
+            directions, valide = QInputDialog.getText(
+                self,
+                "Phase du feu",
+                f"Directions autorisées pour la phase {i} (séparées par des virgules) :"
+            )
+
+            if valide == False:
+                return
+
+            phases.append([direction.strip() for direction in directions.split(",")])
+
+        self.graphe.definir_feu(noeud, phases)
+        self.scene.dessiner_feu(noeud)
+
+        print(f"Feu configuré sur {noeud}")
+
+    def creer_vehicule(self):
+        depart, valide = QInputDialog.getItem(
+            self,
+            "Départ",
+            "Choisissez le départ :",
+            list(self.graphe.noeuds.keys()),
+            0,
+            False
+        )
+
+        if valide == False:
+            return
+
         print(f"Départ choisi : {depart}")
 
         destination, valide = QInputDialog.getItem(
@@ -172,9 +226,10 @@ class FenetrePrincipale(QMainWindow):
         )
 
         self.vehicules.append(vehicule)
+
         x, y = self.scene.positions[depart]
 
-        voiture_graphique = QGraphicsEllipseItem(x + 20, y - 7, 14, 14)
+        voiture_graphique = QGraphicsEllipseItem(-7, -7, 14, 14)
 
         couleur = QColor(
             random.randint(0, 255),
@@ -185,6 +240,9 @@ class FenetrePrincipale(QMainWindow):
         voiture_graphique.setBrush(QBrush(couleur))
 
         self.scene.addItem(voiture_graphique)
+
+        vehicule.graphique = voiture_graphique
+
         print(f"Position du véhicule : {x}, {y}")
         print(f"Véhicule créé : {depart} -> {destination}")
 
@@ -192,13 +250,25 @@ class FenetrePrincipale(QMainWindow):
         vehicules_encore_actifs = []
 
         for vehicule in self.vehicules:
+            if vehicule.avancement < 1:
+                x1, y1 = self.scene.positions[vehicule.depart]
+                x2, y2 = self.scene.positions[vehicule.arrivee]
+
+                x = x1 + (x2 - x1) * vehicule.avancement
+                y = y1 + (y2 - y1) * vehicule.avancement
+
+                vehicule.graphique.setPos(x, y)
+
             resultat = vehicule.avancer(self.graphe)
             print(resultat)
 
             if resultat != "arrive":
                 vehicules_encore_actifs.append(vehicule)
+            else:
+                self.scene.removeItem(vehicule.graphique)
 
         self.vehicules = vehicules_encore_actifs
+
 
 app = QApplication(sys.argv)
 fenetre = FenetrePrincipale()
