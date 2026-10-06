@@ -13,7 +13,7 @@ class Vehicule:
         self.arrivee = self.chemin[self.index_chemin + 1]
 
     def avancer(self, graphe):
-        self.avancement += self.vitesse
+        self.avancement += self.vitesse  * (20 / 300)
         if self.est_urgent and self.avancement >= 0.7:
             if graphe.est_vert(self.arrivee, self.depart) == False:
                 phases = graphe.noeuds[self.arrivee]["phases"]
