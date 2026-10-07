@@ -44,6 +44,51 @@ class Graphes:
             self.aretes[arrivee].update({depart: poids})
         return None
 
+    def renommer_noeud(self, ancien_nom, nouveau_nom):
+        if ancien_nom not in self.noeuds:
+            raise ValueError("le noeud n'existe pas")
+        if nouveau_nom in self.noeuds:
+            raise ValueError("Ce noeud existe déjà")
+
+        self.noeuds[nouveau_nom] = self.noeuds.pop(ancien_nom)
+
+        if ancien_nom in self.aretes:
+            self.aretes[nouveau_nom] = self.aretes.pop(ancien_nom)
+
+        for depart in self.aretes:
+            if ancien_nom in self.aretes[depart]:
+                self.aretes[depart][nouveau_nom] = self.aretes[depart].pop(ancien_nom)
+
+        for noeud in self.noeuds:
+            if isinstance(self.noeuds[noeud], dict):
+                phases = self.noeuds[noeud]["phases"]
+                for phase in phases:
+                    for index, voisin in enumerate(phase):
+                        if voisin == ancien_nom:
+                            phase[index] = nouveau_nom
+
+    def supprimer_noeud(self, nom):
+        if nom not in self.noeuds:
+            raise ValueError("le noeud n'existe pas")
+
+        del self.noeuds[nom]
+
+        if nom in self.aretes:
+            del self.aretes[nom]
+
+        for depart in list(self.aretes.keys()):
+            if nom in self.aretes[depart]:
+                del self.aretes[depart][nom]
+            if self.aretes[depart] == {}:
+                del self.aretes[depart]
+
+        for noeud in self.noeuds:
+            if isinstance(self.noeuds[noeud], dict):
+                phases = self.noeuds[noeud]["phases"]
+                for phase in phases:
+                    while nom in phase:
+                        phase.remove(nom)
+
     def definir_feu(self, noeud, phases):
         if noeud not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
