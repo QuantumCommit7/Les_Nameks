@@ -4,7 +4,7 @@ from graphes import Graphes
 from graphe_test import DENSITES_TEST, NOEUDS_TEST, ARETES_TEST, FEUX_TEST
 from PyQt6.QtWidgets import QApplication, QInputDialog, QMainWindow, QGraphicsScene, QGraphicsView, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QGraphicsEllipseItem, QMenu, QMessageBox
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QBrush, QColor
+from PyQt6.QtGui import QBrush, QColor, QPen
 from vehicule import Vehicule
 import random
 
@@ -41,6 +41,12 @@ class SceneGraphe(QGraphicsScene):
 
         if event.button() != Qt.MouseButton.LeftButton:
             return
+
+        if self.fenetre is not None:
+            for vehicule in self.fenetre.vehicules:
+                if item_clique == vehicule.graphique:
+                    self.fenetre.selectionner_vehicule(vehicule)
+                    return
 
         if item_clique in self.cercles:
             nom_clique = self.cercles[item_clique]
@@ -455,6 +461,8 @@ class FenetrePrincipale(QMainWindow):
 
         self.graphe = Graphes()
         self.vehicules = []
+        self.vehicule_selectionne = None
+        self.pen_routes_avant_selection = {}
         self.distance_securite = 0.08
         self.distance_laisser_passer = 0.20
         self.decalage_laisser_passer = 2
@@ -606,6 +614,8 @@ class FenetrePrincipale(QMainWindow):
         if valide == False:
             return
 
+        self.deselectionner_vehicule()
+
         self.nombre_vehicules_voulu = DENSITES_TEST[densite]
 
         self.simulation_active = False
@@ -728,6 +738,34 @@ class FenetrePrincipale(QMainWindow):
         vehicule.graphique = voiture_graphique
 
         return vehicule
+
+    def selectionner_vehicule(self, vehicule):
+        if vehicule == self.vehicule_selectionne:
+            self.deselectionner_vehicule()
+            return
+
+        self.deselectionner_vehicule()
+        self.vehicule_selectionne = vehicule
+
+        chemin = vehicule.chemin
+        if not isinstance(chemin, (list, tuple)):
+            return
+
+        for depart, arrivee in zip(chemin, chemin[1:]):
+            cle = self.scene.cle_arete(depart, arrivee)
+            for ligne in self.scene.lignes_aretes.get(cle, []):
+                self.pen_routes_avant_selection[ligne] = QPen(ligne.pen())
+                pen = QPen(ligne.pen())
+                pen.setColor(QColor("orange"))
+                pen.setWidthF(3.0)
+                ligne.setPen(pen)
+
+    def deselectionner_vehicule(self):
+        for ligne, pen in self.pen_routes_avant_selection.items():
+            ligne.setPen(pen)
+
+        self.pen_routes_avant_selection = {}
+        self.vehicule_selectionne = None
 
     def creer_vehicule_aleatoire(self):
         noeuds = list(self.graphe.noeuds.keys())
@@ -946,6 +984,8 @@ class FenetrePrincipale(QMainWindow):
             if resultat != "arrive":
                 vehicules_encore_actifs.append(vehicule)
             else:
+                if vehicule == self.vehicule_selectionne:
+                    self.deselectionner_vehicule()
                 self.scene.removeItem(vehicule.graphique)
 
         self.vehicules = vehicules_encore_actifs
