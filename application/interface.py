@@ -2,6 +2,7 @@ import json
 import sys
 import math
 import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -476,6 +477,10 @@ class FenetrePrincipale(QMainWindow):
         self.simulation_active = False
         self.nombre_vehicules_voulu = 0
         self.vehicules_arrives = 0
+        self.temps_simulation_actif = 0.0
+        self.dernier_instant_actif = None
+        self.temps_total_trajets_termines = 0.0
+        self.nombre_trajets_termines = 0
         self.verrou_envoi_statistiques = threading.Lock()
 
         self.scene = SceneGraphe(self.graphe)
@@ -630,6 +635,10 @@ class FenetrePrincipale(QMainWindow):
 
         self.nombre_vehicules_voulu = DENSITES_TEST[densite]
         self.vehicules_arrives = 0
+        self.temps_simulation_actif = 0.0
+        self.dernier_instant_actif = None
+        self.temps_total_trajets_termines = 0.0
+        self.nombre_trajets_termines = 0
 
         self.simulation_active = False
         self.timer.stop()
@@ -723,6 +732,7 @@ class FenetrePrincipale(QMainWindow):
             destination,
             est_urgent=est_urgent
         )
+        vehicule.temps_debut_trajet_actif = self.obtenir_temps_simulation_actif()
 
         self.vehicules.append(vehicule)
 
@@ -890,22 +900,89 @@ class FenetrePrincipale(QMainWindow):
         self.mettre_a_jour_feux()
 
     def demarrer_pause(self):
-        self.simulation_active = not self.simulation_active
-
         if self.simulation_active:
-            self.bouton_simulation.setText("Pause")
-            self.timer.start(20)
-            self.timer_feux.start(5000)
-            self.timer_statistiques.start(5000)
-        else:
+            self.actualiser_temps_simulation_actif()
+            self.simulation_active = False
             self.bouton_simulation.setText("Démarrer")
             self.timer.stop()
             self.timer_feux.stop()
             self.timer_statistiques.stop()
+        else:
+            self.simulation_active = True
+            self.dernier_instant_actif = time.monotonic()
+            self.bouton_simulation.setText("Pause")
+            self.timer.start(20)
+            self.timer_feux.start(5000)
+            self.timer_statistiques.start(5000)
+
+    def actualiser_temps_simulation_actif(self):
+        if self.simulation_active and self.dernier_instant_actif is not None:
+            maintenant = time.monotonic()
+            self.temps_simulation_actif += maintenant - self.dernier_instant_actif
+            self.dernier_instant_actif = maintenant
+
+    def obtenir_temps_simulation_actif(self):
+        temps = self.temps_simulation_actif
+        if self.simulation_active and self.dernier_instant_actif is not None:
+            temps += time.monotonic() - self.dernier_instant_actif
+        return temps
+
+    def calculer_temps_moyen_trajet(self):
+        if self.nombre_trajets_termines == 0:
+            return 0.0
+        return self.temps_total_trajets_termines / self.nombre_trajets_termines
+
+    def vehicule_attend_au_feu(self, vehicule):
+        return (
+            vehicule.avancement >= 1
+            and not self.graphe.est_vert(vehicule.arrivee, vehicule.depart)
+        )
+
+    def compter_vehicules_attente_feu(self):
+        return sum(1 for vehicule in self.vehicules if self.vehicule_attend_au_feu(vehicule))
+
+    def vehicule_bloque_par_un_autre(self, vehicule):
+        for autre_vehicule in self.vehicules:
+            if autre_vehicule == vehicule:
+                continue
+
+            meme_depart = autre_vehicule.depart == vehicule.depart
+            meme_arrivee = autre_vehicule.arrivee == vehicule.arrivee
+            devant = autre_vehicule.avancement > vehicule.avancement
+
+            if meme_depart and meme_arrivee and devant:
+                distance = autre_vehicule.avancement - vehicule.avancement
+                if distance < self.distance_securite:
+                    if vehicule.est_urgent:
+                        if self.vehicule_ecarte_pour_prioritaire(autre_vehicule, vehicule):
+                            continue
+                    return True
+
+        return False
+
+    def compter_vehicules_bouchon(self):
+        nombre = 0
+        for vehicule in self.vehicules:
+            if self.vehicule_attend_au_feu(vehicule):
+                continue
+            if self.vehicule_doit_secarter(vehicule):
+                continue
+            if self.vehicule_bloque_par_un_autre(vehicule):
+                nombre += 1
+        return nombre
 
     def envoyer_statistiques(self):
         if self.simulation_active == False:
             return
+
+        temps_moyen = self.calculer_temps_moyen_trajet()
+        vehicules_attente_feu = self.compter_vehicules_attente_feu()
+        vehicules_bouchon = self.compter_vehicules_bouchon()
+        print(
+            f"Temps moyen trajet : {temps_moyen:.2f} s | "
+            f"En attente au feu : {vehicules_attente_feu} | "
+            f"En bouchon : {vehicules_bouchon}"
+        )
 
         statistiques = {
             "type": "statistiques",
@@ -914,6 +991,9 @@ class FenetrePrincipale(QMainWindow):
             "vehicules_prioritaires": sum(
                 1 for vehicule in self.vehicules if vehicule.est_urgent
             ),
+            "temps_moyen_trajet": temps_moyen,
+            "vehicules_attente_feu": vehicules_attente_feu,
+            "vehicules_bouchon": vehicules_bouchon,
         }
         message = json.dumps(statistiques)
 
@@ -973,24 +1053,7 @@ class FenetrePrincipale(QMainWindow):
         if self.vehicule_doit_secarter(vehicule):
             return False
 
-        for autre_vehicule in self.vehicules:
-            if autre_vehicule != vehicule:
-
-                meme_depart = autre_vehicule.depart == vehicule.depart
-                meme_arrivee = autre_vehicule.arrivee == vehicule.arrivee
-
-                if meme_depart and meme_arrivee:
-                    if autre_vehicule.avancement > vehicule.avancement:
-                        distance = autre_vehicule.avancement - vehicule.avancement
-
-                        if distance < self.distance_securite:
-                            if vehicule.est_urgent:
-                                if self.vehicule_ecarte_pour_prioritaire(autre_vehicule, vehicule):
-                                    continue
-
-                            return False
-
-        return True
+        return not self.vehicule_bloque_par_un_autre(vehicule)
 
     def mettre_a_jour_position_vehicule(self, vehicule):
         x1, y1 = self.scene.positions[vehicule.depart]
@@ -1023,6 +1086,8 @@ class FenetrePrincipale(QMainWindow):
         if self.simulation_active == False:
             return
 
+        self.actualiser_temps_simulation_actif()
+
         vehicules_encore_actifs = []
         for vehicule in self.vehicules:
             self.mettre_a_jour_position_vehicule(vehicule)
@@ -1040,6 +1105,11 @@ class FenetrePrincipale(QMainWindow):
                 vehicules_encore_actifs.append(vehicule)
             else:
                 self.vehicules_arrives += 1
+                duree_trajet = (
+                    self.temps_simulation_actif - vehicule.temps_debut_trajet_actif
+                )
+                self.temps_total_trajets_termines += max(0.0, duree_trajet)
+                self.nombre_trajets_termines += 1
                 if vehicule == self.vehicule_selectionne:
                     self.deselectionner_vehicule()
                 self.scene.removeItem(vehicule.graphique)

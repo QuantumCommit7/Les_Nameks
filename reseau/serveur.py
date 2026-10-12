@@ -1,4 +1,5 @@
 import json
+import math
 import socket
 import threading
 from pathlib import Path
@@ -91,12 +92,16 @@ def enregistrer_statistiques(donnees):
         with connexion_db.cursor() as curseur:
             curseur.execute(
                 """INSERT INTO statistiques
-                   (vehicules_actifs, vehicules_arrives, vehicules_prioritaires)
-                   VALUES (%s, %s, %s)""",
+                   (vehicules_actifs, vehicules_arrives, vehicules_prioritaires,
+                    temps_moyen_trajet, vehicules_attente_feu, vehicules_bouchon)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
                 (
                     donnees["vehicules_actifs"],
                     donnees["vehicules_arrives"],
                     donnees["vehicules_prioritaires"],
+                    donnees["temps_moyen_trajet"],
+                    donnees["vehicules_attente_feu"],
+                    donnees["vehicules_bouchon"],
                 ),
             )
         connexion_db.commit()
@@ -141,12 +146,30 @@ def traiter_message(message, adresse, termine_par_ligne):
         print(f"Statistiques invalides de {adresse[0]} : le JSON doit se terminer par un saut de ligne.")
         return
 
-    champs = ("vehicules_actifs", "vehicules_arrives", "vehicules_prioritaires")
-    for champ in champs:
+    champs_entiers = (
+        "vehicules_actifs",
+        "vehicules_arrives",
+        "vehicules_prioritaires",
+        "vehicules_attente_feu",
+        "vehicules_bouchon",
+    )
+    for champ in champs_entiers:
         valeur = donnees.get(champ)
         if type(valeur) is not int or valeur < 0:
             print(f"Statistiques invalides de {adresse[0]} : {champ} doit être un entier positif ou nul.")
             return
+
+    temps_moyen = donnees.get("temps_moyen_trajet")
+    if isinstance(temps_moyen, bool) or not isinstance(temps_moyen, (int, float)):
+        print(f"Statistiques invalides de {adresse[0]} : temps_moyen_trajet doit être un nombre fini positif ou nul.")
+        return
+    try:
+        temps_valide = math.isfinite(temps_moyen) and temps_moyen >= 0
+    except (OverflowError, TypeError):
+        temps_valide = False
+    if not temps_valide:
+        print(f"Statistiques invalides de {adresse[0]} : temps_moyen_trajet doit être un nombre fini positif ou nul.")
+        return
 
     enregistrer_statistiques(donnees)
 

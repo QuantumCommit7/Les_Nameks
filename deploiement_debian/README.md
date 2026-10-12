@@ -137,26 +137,85 @@ python3 tester_db.py
 
 Le script doit afficher un succès et le nombre de lignes de `statistiques` (probablement `0` avant tout enregistrement). Il lit `.env`, exécute `SELECT COUNT(*)`, puis ferme la connexion.
 
-## 9. Lancer ensuite le serveur TCP
+## 9. Mettre à jour les statistiques sur une installation existante
 
-Le serveur Python est dans le dossier voisin `reseau/`, pas dans `deploiement_debian/`. Dans un nouveau terminal Debian, lance-le depuis la racine du projet :
+Cette procédure ajoute les nouvelles mesures sans supprimer de table ni de ligne. Le serveur mis à jour doit être déployé **après la migration SQL et avant d'utiliser le nouveau simulateur Windows**.
+
+### 9.1 Arrêter le serveur TCP
+
+Dans le terminal Debian où `reseau/serveur.py` est lancé, appuie sur `Ctrl+C` et attends le message d'arrêt. Si le serveur est géré par un service, arrête ce service à la place.
+
+### 9.2 Récupérer les modifications
+
+Sur la VM déjà clonée, exécute :
+
+```bash
+cd "$HOME/Les_Nameks"
+git status --short
+git pull --ff-only
+```
+
+Si `git status --short` signale des modifications locales, conserve-les ou demande conseil avant de continuer. Le fichier local `deploiement_debian/.env` est ignoré par Git et contient les paramètres MariaDB propres à la VM.
+
+### 9.3 Vérifier et sauvegarder la base
+
+Vérifie que la base et la table attendues existent :
+
+```bash
+sudo mariadb -e "SHOW TABLES IN simulation_trafic;"
+```
+
+Crée une sauvegarde avant la modification du schéma :
+
+```bash
+mkdir -p "$HOME/sauvegardes"
+sudo mariadb-dump simulation_trafic > "$HOME/sauvegardes/simulation_trafic_avant_migration_$(date +%Y%m%d_%H%M%S).sql"
+ls -lh "$HOME"/sauvegardes/simulation_trafic_avant_migration_*.sql
+```
+
+Vérifie que le fichier de sauvegarde est présent et non vide avant de continuer.
+
+### 9.4 Lancer la migration
+
+La migration vérifie chaque colonne dans `information_schema` et n'ajoute que celles qui manquent. Les anciennes lignes reçoivent `0` comme valeur par défaut pour les nouvelles mesures.
+
+```bash
+cd "$HOME/Les_Nameks/deploiement_debian"
+sudo mariadb < migration_stats.sql
+```
+
+La commande doit se terminer sans erreur. Elle peut être relancée : les colonnes déjà présentes ne sont pas ajoutées une deuxième fois.
+
+### 9.5 Vérifier les colonnes
+
+```bash
+sudo mariadb simulation_trafic -e "SHOW COLUMNS FROM statistiques;"
+```
+
+La sortie doit contenir `temps_moyen_trajet` de type `double`, puis `vehicules_attente_feu` et `vehicules_bouchon` de type `int`. Les trois colonnes doivent être `NOT NULL` avec `DEFAULT 0`.
+
+### 9.6 Redémarrer le serveur mis à jour
+
+Après la migration seulement, lance le serveur depuis la racine du projet :
 
 ```bash
 cd "$HOME/Les_Nameks"
 python3 reseau/serveur.py
 ```
 
-Ce serveur TCP reçoit actuellement un message texte et l'affiche. **Il n'utilise pas encore MariaDB et n'enregistre pas automatiquement de statistiques.** L'intégration de l'enregistrement sera une étape ultérieure. Seul le port TCP 5000 est destiné aux messages venant du simulateur Windows ; le port 3306 reste local à Debian.
+Laisse ce terminal ouvert. Il utilise les identifiants du fichier local `deploiement_debian/.env`. Seul le port TCP 5000 reçoit les messages du simulateur ; MariaDB reste local à Debian.
 
-## 10. Afficher les statistiques
+### 9.7 Lancer le simulateur Windows et vérifier les six mesures
 
-Après de futurs enregistrements dans la table, affiche les lignes avec :
+Après le redémarrage du serveur, récupère aussi la version à jour du projet sur Windows (`git pull` dans son dossier cloné), puis lance le simulateur. Pendant la simulation active, le client envoie les six mesures toutes les cinq secondes.
+
+Sur Debian, affiche les derniers enregistrements :
 
 ```bash
-sudo mariadb simulation_trafic -e "SELECT id, date_mesure, vehicules_actifs, vehicules_arrives, vehicules_prioritaires FROM statistiques ORDER BY id DESC;"
+sudo mariadb simulation_trafic -e "SELECT id, date_mesure, vehicules_actifs, vehicules_arrives, vehicules_prioritaires, temps_moyen_trajet, vehicules_attente_feu, vehicules_bouchon FROM statistiques ORDER BY id DESC LIMIT 10;"
 ```
 
-Pour l'instant, la table peut rester vide : le serveur TCP actuel ne fait aucun `INSERT`.
+De nouvelles lignes doivent apparaître au rythme d'environ une ligne toutes les cinq secondes lorsque la simulation est active. Les trois colonnes ajoutées doivent contenir les valeurs envoyées par l'interface. `temps_moyen_trajet` peut valoir `0` tant qu'aucun trajet n'est terminé.
 
 ## Erreurs fréquentes
 
@@ -166,10 +225,12 @@ Pour l'instant, la table peut rester vide : le serveur TCP actuel ne fait aucun 
 - **`ModuleNotFoundError: No module named 'pymysql'`** : exécute `sudo apt-get install -y python3-pymysql`.
 - **Accès refusé (erreur 1045)** : vérifie `DB_USER`, `DB_PASSWORD` dans `.env`, puis les droits affichés par `SHOW GRANTS`. Ne partage pas le mot de passe pour demander de l'aide.
 - **Connexion refusée à `127.0.0.1:3306` (erreur 2003)** : vérifie que MariaDB est actif et écoute sur `127.0.0.1:3306` avec les commandes de la section 7.
-- **Base ou table inconnue** : depuis ce dossier, relance `sudo mariadb < init_db.sql`.
+- **Base ou table inconnue** : vérifie d'abord le nom de la base et la table avec `sudo mariadb -e "SHOW TABLES IN simulation_trafic;"`. N'exécute pas une réinitialisation pour corriger une migration échouée.
 - **`tester_db.py` dit que `.env` manque** : vérifie que tu as fait `cp .env.example .env` depuis `deploiement_debian/` puis rempli `DB_PASSWORD`.
-- **Un message TCP n'apparaît pas sur Debian** : vérifie que `python3 reseau/serveur.py` tourne depuis la racine du projet et que le réseau autorise le port 5000. Cela est indépendant de MariaDB.
+- **Aucune nouvelle ligne n'apparaît** : vérifie que le serveur mis à jour tourne, qu'il affiche `Statistiques enregistrées dans MariaDB.`, et que la simulation Windows est active. Regarde ensuite les erreurs du terminal serveur sans afficher le contenu de `.env`.
+- **Erreur SQL indiquant une colonne inconnue** : vérifie la sortie de `SHOW COLUMNS FROM statistiques;` et exécute `migration_stats.sql` avant de relancer le serveur.
+- **Erreur de connexion TCP** : vérifie que `python3 reseau/serveur.py` tourne depuis la racine du projet et que le réseau autorise le port 5000.
 
-## Étape future : enregistrer les statistiques reçues en JSON
+## Compatibilité de la migration
 
-Le client Windows et le serveur TCP devront convenir d'un format JSON avec les champs `vehicules_actifs`, `vehicules_arrives` et `vehicules_prioritaires`. Le serveur devra décoder et valider chaque message reçu, lire sa configuration locale, puis exécuter un `INSERT` paramétré dans `statistiques` avec PyMySQL. Il faudra aussi décider quand mesurer les compteurs et comment répondre au client en cas de message invalide ou d'échec MariaDB. Le serveur actuel ne réalise aucune de ces opérations.
+Le fichier crée une procédure stockée pour vérifier `information_schema`, l'appelle puis la supprime. Cette méthode évite de dépendre de `ADD COLUMN IF NOT EXISTS`, dont la disponibilité dépend de la version de MariaDB. Le client en ligne de commande `mariadb` comprend les délimiteurs utilisés. Le compte qui exécute la migration doit pouvoir créer une procédure et modifier `simulation_trafic.statistiques` ; `sudo mariadb` est utilisé dans les commandes ci-dessus. La migration n'a pas été exécutée sur la VM dans le cadre de cette modification.
