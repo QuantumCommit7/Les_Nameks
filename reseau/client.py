@@ -14,7 +14,8 @@ if message_saisi:
 try:
     # Le context manager ferme la socket, même si une erreur survient.
     with socket.create_connection((ADRESSE_SERVEUR, PORT), timeout=5) as client:
-        client.sendall(MESSAGE.encode("utf-8"))
+        # Le saut de ligne délimite le message sur le flux TCP.
+        client.sendall((MESSAGE + "\n").encode("utf-8"))
         # Signale au serveur que tout le message a été envoyé.
         client.shutdown(socket.SHUT_WR)
 
