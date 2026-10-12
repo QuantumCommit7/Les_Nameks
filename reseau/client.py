@@ -6,6 +6,10 @@ ADRESSE_SERVEUR = "10.128.238.191"
 PORT = 5000
 MESSAGE = "Bonjour depuis Windows !"
 
+message_saisi = input(f"Message à envoyer [{MESSAGE}] : ").strip()
+if message_saisi:
+    MESSAGE = message_saisi
+
 
 try:
     # Le context manager ferme la socket, même si une erreur survient.
