@@ -4,26 +4,35 @@ import sys
 
 ADRESSE_SERVEUR = "10.128.238.191"
 PORT = 5000
-MESSAGE = "Bonjour depuis Windows !"
-
-message_saisi = input(f"Message à envoyer [{MESSAGE}] : ").strip()
-if message_saisi:
-    MESSAGE = message_saisi
 
 
-try:
-    # Le context manager ferme la socket, même si une erreur survient.
-    with socket.create_connection((ADRESSE_SERVEUR, PORT), timeout=5) as client:
-        # Le saut de ligne délimite le message sur le flux TCP.
-        client.sendall((MESSAGE + "\n").encode("utf-8"))
-        # Signale au serveur que tout le message a été envoyé.
+def envoyer_message(message, timeout=5):
+    """Envoie un message UTF-8 terminé par un saut de ligne."""
+    with socket.create_connection(
+        (ADRESSE_SERVEUR, PORT),
+        timeout=timeout
+    ) as client:
+        client.sendall((message.rstrip("\r\n") + "\n").encode("utf-8"))
         client.shutdown(socket.SHUT_WR)
 
-    print("Message envoyé avec succès.")
-except OSError as erreur:
-    print(
-        f"Connexion impossible à {ADRESSE_SERVEUR}:{PORT}. "
-        f"Vérifiez que le serveur est lancé et que le port {PORT} est accessible. "
-        f"Détail : {erreur}"
-    )
-    sys.exit(1)
+
+def main():
+    message_par_defaut = "Bonjour depuis Windows !"
+    message = input(f"Message à envoyer [{message_par_defaut}] : ").strip()
+    if not message:
+        message = message_par_defaut
+
+    try:
+        envoyer_message(message)
+        print("Message envoyé avec succès.")
+    except OSError as erreur:
+        print(
+            f"Connexion impossible à {ADRESSE_SERVEUR}:{PORT}. "
+            f"Vérifiez que le serveur est lancé et que le port {PORT} est accessible. "
+            f"Détail : {erreur}"
+        )
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

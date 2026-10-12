@@ -1,5 +1,12 @@
+import json
 import sys
 import math
+import threading
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from reseau.client import envoyer_message
+
 from graphes import Graphes
 from graphe_test import DENSITES_TEST, NOEUDS_TEST, ARETES_TEST, FEUX_TEST
 from PyQt6.QtWidgets import QApplication, QInputDialog, QMainWindow, QGraphicsScene, QGraphicsView, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QGraphicsEllipseItem, QMenu, QMessageBox
@@ -468,6 +475,8 @@ class FenetrePrincipale(QMainWindow):
         self.decalage_laisser_passer = 2
         self.simulation_active = False
         self.nombre_vehicules_voulu = 0
+        self.vehicules_arrives = 0
+        self.verrou_envoi_statistiques = threading.Lock()
 
         self.scene = SceneGraphe(self.graphe)
         self.scene.fenetre = self
@@ -512,6 +521,9 @@ class FenetrePrincipale(QMainWindow):
 
         self.timer_feux = QTimer()
         self.timer_feux.timeout.connect(self.changer_feux)
+
+        self.timer_statistiques = QTimer()
+        self.timer_statistiques.timeout.connect(self.envoyer_statistiques)
 
     def trouver_groupes(self, noeud):
         routes = list(self.graphe.aretes[noeud].keys())
@@ -617,10 +629,12 @@ class FenetrePrincipale(QMainWindow):
         self.deselectionner_vehicule()
 
         self.nombre_vehicules_voulu = DENSITES_TEST[densite]
+        self.vehicules_arrives = 0
 
         self.simulation_active = False
         self.timer.stop()
         self.timer_feux.stop()
+        self.timer_statistiques.stop()
         self.bouton_simulation.setText("Démarrer")
 
         self.graphe = Graphes()
@@ -882,10 +896,51 @@ class FenetrePrincipale(QMainWindow):
             self.bouton_simulation.setText("Pause")
             self.timer.start(20)
             self.timer_feux.start(5000)
+            self.timer_statistiques.start(5000)
         else:
             self.bouton_simulation.setText("Démarrer")
             self.timer.stop()
             self.timer_feux.stop()
+            self.timer_statistiques.stop()
+
+    def envoyer_statistiques(self):
+        if self.simulation_active == False:
+            return
+
+        statistiques = {
+            "type": "statistiques",
+            "vehicules_actifs": len(self.vehicules),
+            "vehicules_arrives": self.vehicules_arrives,
+            "vehicules_prioritaires": sum(
+                1 for vehicule in self.vehicules if vehicule.est_urgent
+            ),
+        }
+        message = json.dumps(statistiques)
+
+        # Un verrou évite de démarrer un nouvel envoi si le précédent est bloqué.
+        if not self.verrou_envoi_statistiques.acquire(blocking=False):
+            return
+
+        thread = threading.Thread(
+            target=self.envoyer_statistiques_thread,
+            args=(message,),
+            daemon=True,
+        )
+        try:
+            thread.start()
+        except RuntimeError as erreur:
+            self.verrou_envoi_statistiques.release()
+            print(f"Impossible de démarrer l'envoi des statistiques : {erreur}")
+
+    def envoyer_statistiques_thread(self, message):
+        try:
+            envoyer_message(message, timeout=3)
+        except OSError as erreur:
+            print(f"Envoi des statistiques impossible : {erreur}")
+        except Exception as erreur:
+            print(f"Erreur pendant l'envoi des statistiques : {type(erreur).__name__}")
+        finally:
+            self.verrou_envoi_statistiques.release()
 
     def vehicule_ecarte_pour_prioritaire(self, vehicule, vehicule_prioritaire):
         if vehicule.est_urgent:
@@ -984,6 +1039,7 @@ class FenetrePrincipale(QMainWindow):
             if resultat != "arrive":
                 vehicules_encore_actifs.append(vehicule)
             else:
+                self.vehicules_arrives += 1
                 if vehicule == self.vehicule_selectionne:
                     self.deselectionner_vehicule()
                 self.scene.removeItem(vehicule.graphique)
