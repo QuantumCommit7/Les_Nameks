@@ -7,19 +7,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from reseau.client import envoyer_message
-try:
-    from carte import PanneauCarte, RAISON_CARTE_INDISPONIBLE
-except ImportError as erreur_carte:
-    PanneauCarte = None
-    RAISON_CARTE_INDISPONIBLE = (f"carte.py est introuvable ou n'est pas à jour ({erreur_carte}).\n"
-                                 "Copiez la dernière version de carte.py dans le dossier de interface.py.")
 
 from graphes import Graphes
 from graphe_test import DENSITES_TEST, NOEUDS_TEST, ARETES_TEST, FEUX_TEST
-from PyQt6.QtWidgets import QApplication, QInputDialog, QMainWindow, QGraphicsScene, QGraphicsView, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QGraphicsEllipseItem, QMenu, QMessageBox, QTabWidget, QLabel
+from PyQt6.QtWidgets import QApplication, QComboBox, QGridLayout, QGroupBox, QInputDialog, QLabel, QMainWindow, QPushButton, QScrollArea, QWidget, QVBoxLayout, QHBoxLayout, QGraphicsRectItem, QMenu, QMessageBox
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor, QPen
-from fond_carte import FondCarte
 from vue_graphe import VueGraphe
 from scene_graphe import SceneGraphe
 from vehicule import Vehicule
@@ -48,6 +41,16 @@ class FenetrePrincipale(QMainWindow):
         self.temps_total_trajets_termines = 0.0
         self.nombre_trajets_termines = 0
         self.verrou_envoi_statistiques = threading.Lock()
+        self.gyrophare_vehicules = {}
+        self.gyrophare_bleu_actif = True
+        self.transitions_feux = {}
+        self.couleurs_vehicules_normaux = [
+            QColor("#2676b8"),
+            QColor("#7b4ab2"),
+            QColor("#08a6b8"),
+            QColor("#b98500"),
+            QColor("#cb6c27"),
+        ]
 
         self.scene = SceneGraphe(self.graphe)
         self.scene.fenetre = self
@@ -64,48 +67,144 @@ class FenetrePrincipale(QMainWindow):
         self.bouton_feu = QPushButton("Ajouter un feu")
         self.bouton_feu.clicked.connect(self.configurer_feu)
 
-        self.bouton_lieu = QPushButton("Choisir le lieu")
-        self.bouton_lieu.clicked.connect(self.choisir_lieu)
-        self.scene.fond.lieux_trouves.connect(self.lieux_recus)
-        self.scene.fond.erreur_recherche.connect(self.erreur_lieu)
-
         self.bouton_graphe_test = QPushButton("Graphe de test")
         self.bouton_graphe_test.clicked.connect(self.creer_graphe_test)
 
         self.bouton_simulation = QPushButton("Démarrer")
+        self.bouton_simulation.setObjectName("boutonSimulation")
         self.bouton_simulation.clicked.connect(self.demarrer_pause)
 
+        self.combo_densite = QComboBox()
+        self.combo_densite.addItems(list(DENSITES_TEST.keys()))
+        self.combo_densite.setCurrentText("Faible")
+
+        panneau = QWidget()
+        panneau.setObjectName("panneauLateral")
+        panneau.setFixedWidth(260)
+        layout_panneau = QVBoxLayout()
+        layout_panneau.setSpacing(10)
+
+        section_simulation = QGroupBox("SIMULATION")
+        layout_simulation = QVBoxLayout()
+        layout_simulation.addWidget(self.bouton_simulation)
+        layout_simulation.addWidget(self.combo_densite)
+        layout_simulation.addWidget(self.bouton_graphe_test)
+        section_simulation.setLayout(layout_simulation)
+
+        section_vehicules = QGroupBox("VÉHICULES")
+        layout_vehicules = QVBoxLayout()
+        layout_vehicules.addWidget(self.bouton_vehicule)
+        section_vehicules.setLayout(layout_vehicules)
+
+        section_graphe = QGroupBox("ÉDITION DU GRAPHE")
+        layout_graphe = QVBoxLayout()
+        layout_graphe.addWidget(self.bouton_noeud)
+        layout_graphe.addWidget(self.bouton_feu)
+        section_graphe.setLayout(layout_graphe)
+
+        section_statistiques = QGroupBox("STATISTIQUES")
+        layout_statistiques = QGridLayout()
+        self.labels_statistiques = {}
+        noms_statistiques = [
+            ("vehicules_actifs", "Véhicules actifs"),
+            ("vehicules_arrives", "Véhicules arrivés"),
+            ("vehicules_prioritaires", "Véhicules prioritaires"),
+            ("temps_moyen_trajet", "Temps moyen de trajet"),
+            ("vehicules_attente_feu", "En attente au feu rouge"),
+            ("vehicules_bouchon", "Bloqués dans un bouchon"),
+        ]
+        for ligne, (cle, nom) in enumerate(noms_statistiques):
+            intitule = QLabel(nom)
+            intitule.setStyleSheet("color: #64716e;")
+            valeur = QLabel("0")
+            valeur.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            valeur.setStyleSheet("font-size: 11pt; font-weight: bold; color: #263238;")
+            self.labels_statistiques[cle] = valeur
+            layout_statistiques.addWidget(intitule, ligne, 0)
+            layout_statistiques.addWidget(valeur, ligne, 1)
+        layout_statistiques.setColumnStretch(0, 1)
+        section_statistiques.setLayout(layout_statistiques)
+
+        section_legende = QGroupBox("LÉGENDE")
+        layout_legende = QVBoxLayout()
+        elements_legende = [
+            ("#2676b8", "Véhicule normal (palette variée)"),
+            ("red", "Véhicule prioritaire"),
+            ("green", "Feu vert"),
+            ("red", "Feu rouge"),
+            ("orange", "Trajet Dijkstra sélectionné"),
+        ]
+        for couleur, texte in elements_legende:
+            ligne_legende = QHBoxLayout()
+            pastille = QLabel("●")
+            pastille.setStyleSheet(f"color: {couleur}; font-size: 14pt;")
+            texte_legende = QLabel(texte)
+            texte_legende.setWordWrap(True)
+            ligne_legende.addWidget(pastille)
+            ligne_legende.addWidget(texte_legende)
+            layout_legende.addLayout(ligne_legende)
+        section_legende.setLayout(layout_legende)
+
+        layout_panneau.addWidget(section_simulation)
+        layout_panneau.addWidget(section_vehicules)
+        layout_panneau.addWidget(section_graphe)
+        layout_panneau.addWidget(section_statistiques)
+        layout_panneau.addWidget(section_legende)
+        layout_panneau.addStretch()
+        panneau.setLayout(layout_panneau)
+
+        panneau_defilant = QScrollArea()
+        panneau_defilant.setWidgetResizable(True)
+        panneau_defilant.setFixedWidth(280)
+        panneau_defilant.setWidget(panneau)
+
         conteneur = QWidget()
-        layout = QVBoxLayout()
-        layout_boutons = QHBoxLayout()
-
-        layout_boutons.addWidget(self.bouton_noeud)
-        layout_boutons.addWidget(self.bouton_vehicule)
-        layout_boutons.addWidget(self.bouton_feu)
-        layout_boutons.addWidget(self.bouton_lieu)
-        layout_boutons.addWidget(self.bouton_graphe_test)
-        layout_boutons.addWidget(self.bouton_simulation)
-
-        layout.addLayout(layout_boutons)
-
-        self.onglets = QTabWidget()
-        self.onglets.addTab(self.view, "Schéma")
-        self.compteur_carte = 0
-        if PanneauCarte is not None:
-            self.panneau_carte = PanneauCarte()
-            self.onglets.addTab(self.panneau_carte, "Carte")
-        else:
-            self.panneau_carte = None
-            indisponible = QLabel("La carte est indisponible.\n\n" + (RAISON_CARTE_INDISPONIBLE or "Raison inconnue."))
-            indisponible.setWordWrap(True)
-            indisponible.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.onglets.addTab(indisponible, "Carte")
-        self.onglets.currentChanged.connect(self.onglet_change)
-        layout.addWidget(self.onglets)
+        layout = QHBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.addWidget(panneau_defilant)
+        layout.addWidget(self.view, 1)
 
         conteneur.setLayout(layout)
 
         self.setCentralWidget(conteneur)
+        self.setMinimumSize(850, 560)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f3f6f5;
+                color: #263238;
+                font-family: "Segoe UI";
+                font-size: 10pt;
+            }
+            QWidget#panneauLateral { background-color: #f3f6f5; }
+            QGroupBox {
+                background-color: #ffffff;
+                border: 1px solid #d5dfdc;
+                border-radius: 5px;
+                margin-top: 9px;
+                padding: 8px;
+                font-weight: bold;
+                color: #344a46;
+            }
+            QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }
+            QPushButton, QComboBox {
+                min-height: 30px;
+                background-color: #ffffff;
+                border: 1px solid #cbd6d2;
+                border-radius: 4px;
+                padding: 3px 8px;
+            }
+            QPushButton:hover { background-color: #e8efed; }
+            QPushButton#boutonSimulation {
+                background-color: #28766a;
+                color: white;
+                border: none;
+                font-weight: bold;
+            }
+            QPushButton#boutonSimulation:hover { background-color: #206358; }
+            QLabel { background-color: transparent; }
+            QStatusBar { background-color: #ffffff; color: #344a46; }
+        """)
+        self.statusBar().showMessage("Simulation en pause")
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick)
@@ -116,73 +215,9 @@ class FenetrePrincipale(QMainWindow):
         self.timer_statistiques = QTimer()
         self.timer_statistiques.timeout.connect(self.envoyer_statistiques)
 
-    def choisir_lieu(self):
-        texte, valide = QInputDialog.getText(
-            self,
-            "Choisir le lieu",
-            "Ville ou adresse :"
-        )
-
-        if valide == False or texte.strip() == "":
-            return
-
-        self.bouton_lieu.setEnabled(False)
-        self.scene.fond.chercher_lieu(texte.strip())
-
-    def lieux_recus(self, lieux):
-        self.bouton_lieu.setEnabled(True)
-
-        if len(lieux) == 0:
-            QMessageBox.information(self, "Choisir le lieu", "Aucun résultat pour cette recherche.")
-            return
-
-        if len(lieux) == 1:
-            choix = lieux[0]
-        else:
-            noms = [lieu[0] for lieu in lieux]
-            nom, valide = QInputDialog.getItem(
-                self,
-                "Choisir le lieu",
-                "Plusieurs résultats :",
-                noms,
-                0,
-                False
-            )
-            if valide == False:
-                return
-            choix = lieux[noms.index(nom)]
-
-        nom, latitude, longitude = choix
-
-        # Le lieu choisi est placé au centre de ce qu'on voit à l'écran.
-        centre = self.view.mapToScene(self.view.viewport().rect().center())
-        self.scene.fond.definir_centre(latitude, longitude, centre.x(), centre.y())
-        self.view.viewport().update()
-        print(f"Lieu choisi : {nom} ({latitude:.5f}, {longitude:.5f})")
-
-        self.mettre_a_jour_carte(reconstruire=True)
-
-    def erreur_lieu(self, message):
-        self.bouton_lieu.setEnabled(True)
-        QMessageBox.warning(self, "Choisir le lieu", f"Recherche impossible :\n{message}")
-
-    def carte_visible(self):
-        return self.panneau_carte is not None and self.onglets.currentWidget() is self.panneau_carte
-
-    def onglet_change(self, index):
-        self.mettre_a_jour_carte(reconstruire=True)
-
-    def mettre_a_jour_carte(self, reconstruire=False):
-        """reconstruire=True : le graphe a changé, on redessine la carte.
-        Sinon : simple rafraîchissement des feux et des véhicules (appelé à chaque tick)."""
-        if not self.carte_visible():
-            return
-        if reconstruire:
-            self.panneau_carte.afficher_reseau(self.graphe, self.scene.positions, self.vehicules)
-            return
-        self.compteur_carte = (self.compteur_carte + 1) % 5     # la carte suit 1 tick sur 5 (10 fois par seconde)
-        if self.compteur_carte == 0:
-            self.panneau_carte.mettre_a_jour(self.graphe, self.vehicules)
+        self.timer_gyrophare = QTimer()
+        self.timer_gyrophare.timeout.connect(self.changer_gyrophare)
+        self.actualiser_statistiques_interface()
 
     def trouver_groupes(self, noeud):
         routes = list(self.graphe.aretes[noeud].keys())
@@ -267,28 +302,16 @@ class FenetrePrincipale(QMainWindow):
         self.graphe.definir_feu(noeud, phases)
 
         self.scene.dessiner_feu(noeud, groupes)
+        self.statusBar().showMessage(f"Feu ajouté au carrefour {noeud}", 3000)
 
         print(f"Feu ajouté au carrefour {noeud}")
         print(f"Groupe vert : {groupes[0]}")
         print(f"Groupe rouge : {groupes[1]}")
 
-        self.mettre_a_jour_carte(reconstruire=True)
-
     def creer_graphe_test(self):
-        densite, valide = QInputDialog.getItem(
-            self,
-            "Densité du trafic",
-            "Choisissez la densité :",
-            ["Aucun", "Faible", "Moyen", "Fort"],
-            0,
-            False
-        )
-
-        if valide == False:
-            return
-
         self.deselectionner_vehicule()
 
+        densite = self.combo_densite.currentText()
         self.nombre_vehicules_voulu = DENSITES_TEST[densite]
         self.vehicules_arrives = 0
         self.temps_simulation_actif = 0.0
@@ -300,6 +323,9 @@ class FenetrePrincipale(QMainWindow):
         self.timer.stop()
         self.timer_feux.stop()
         self.timer_statistiques.stop()
+        self.timer_gyrophare.stop()
+        self.gyrophare_vehicules = {}
+        self.transitions_feux = {}
         self.bouton_simulation.setText("Démarrer")
 
         self.graphe = Graphes()
@@ -339,11 +365,12 @@ class FenetrePrincipale(QMainWindow):
         for i in range(self.nombre_vehicules_voulu):
             self.creer_vehicule_aleatoire()
 
+        self.view.ajuster_au_graphe()
         print("Graphe de test créé")
         print(f"Véhicules créés : {len(self.vehicules)}")
         print(f"Feux : {FEUX_TEST}")
-
-        self.mettre_a_jour_carte(reconstruire=True)
+        self.actualiser_statistiques_interface()
+        self.statusBar().showMessage("Graphe de test créé", 3000)
 
     def mettre_a_jour_feux(self):
 
@@ -376,41 +403,54 @@ class FenetrePrincipale(QMainWindow):
                         QBrush(QColor("red"))
                     )
 
-    def ajouter_vehicule(self, depart, destination, vitesse, est_urgent=False):
+    def ajouter_vehicule(self, depart, destination, vitesse, est_urgent=False, afficher_erreur=True):
         if est_urgent:
             vitesse = vitesse * 1.3
 
             if vitesse > 1.0:
                 vitesse = 1.0
 
-        vehicule = Vehicule(
-            self.graphe,
-            depart,
-            vitesse,
-            destination,
-            est_urgent=est_urgent
-        )
+        try:
+            vehicule = Vehicule(
+                self.graphe,
+                depart,
+                vitesse,
+                destination,
+                est_urgent=est_urgent
+            )
+        except ValueError as erreur:
+            if afficher_erreur:
+                QMessageBox.warning(self, "Trajet impossible", str(erreur))
+            return None
+
         vehicule.temps_debut_trajet_actif = self.obtenir_temps_simulation_actif()
 
         self.vehicules.append(vehicule)
 
         x, y = self.scene.positions[depart]
 
-        voiture_graphique = QGraphicsEllipseItem(
-            -7,
-            -7,
-            14,
-            14
-        )
+        voiture_graphique = QGraphicsRectItem(-9, -5, 18, 10)
 
         if est_urgent:
-            couleur = QColor("red")
+            couleur = QColor("black")
+            voiture_graphique.setPen(QPen(QColor("#303840"), 1))
+
+            gyro_bleu = QGraphicsRectItem(-4, -3, 4, 6, voiture_graphique)
+            couleur_inactive = QColor("#59636d")
+            if self.gyrophare_bleu_actif:
+                gyro_bleu.setBrush(QBrush(QColor("blue")))
+            else:
+                gyro_bleu.setBrush(QBrush(couleur_inactive))
+            gyro_bleu.setPen(QPen(Qt.PenStyle.NoPen))
+
+            gyro_rouge = QGraphicsRectItem(0, -3, 4, 6, voiture_graphique)
+            if self.gyrophare_bleu_actif:
+                gyro_rouge.setBrush(QBrush(couleur_inactive))
+            else:
+                gyro_rouge.setBrush(QBrush(QColor("red")))
+            gyro_rouge.setPen(QPen(Qt.PenStyle.NoPen))
         else:
-            couleur = QColor(
-                random.randint(0, 255),
-                random.randint(0, 255),
-                random.randint(0, 255)
-            )
+            couleur = random.choice(self.couleurs_vehicules_normaux)
 
         voiture_graphique.setBrush(QBrush(couleur))
         voiture_graphique.setPos(x, y)
@@ -418,6 +458,12 @@ class FenetrePrincipale(QMainWindow):
         self.scene.addItem(voiture_graphique)
 
         vehicule.graphique = voiture_graphique
+        self.mettre_a_jour_position_vehicule(vehicule)
+
+        if est_urgent:
+            self.gyrophare_vehicules[vehicule] = (gyro_bleu, gyro_rouge)
+            if not self.timer_gyrophare.isActive():
+                self.timer_gyrophare.start(200)
 
         return vehicule
 
@@ -467,7 +513,8 @@ class FenetrePrincipale(QMainWindow):
             depart,
             destination,
             vitesse,
-            est_urgent=False
+            est_urgent=False,
+            afficher_erreur=False
         )
 
     def creer_vehicule(self):
@@ -539,18 +586,24 @@ class FenetrePrincipale(QMainWindow):
         else:
             est_urgent = False
 
-        self.ajouter_vehicule(
+        vehicule = self.ajouter_vehicule(
             depart,
             destination,
             vitesse,
             est_urgent
         )
 
+        if vehicule is None:
+            return
+
         x, y = self.scene.positions[depart]
         print(f"Position du véhicule : {x}, {y}")
         print(f"Véhicule créé : {depart} -> {destination}")
-
-        self.mettre_a_jour_carte()
+        if est_urgent:
+            self.statusBar().showMessage("Véhicule prioritaire créé", 3000)
+        else:
+            self.statusBar().showMessage("Véhicule créé", 3000)
+        self.actualiser_statistiques_interface()
 
     def changer_feux(self):
         if self.simulation_active == False:
@@ -558,6 +611,18 @@ class FenetrePrincipale(QMainWindow):
 
         self.feu_vert = not self.feu_vert
         self.mettre_a_jour_feux()
+
+    def changer_gyrophare(self):
+        self.gyrophare_bleu_actif = not self.gyrophare_bleu_actif
+        couleur_inactive = QColor("#59636d")
+
+        for gyro_bleu, gyro_rouge in self.gyrophare_vehicules.values():
+            if self.gyrophare_bleu_actif:
+                gyro_bleu.setBrush(QBrush(QColor("blue")))
+                gyro_rouge.setBrush(QBrush(couleur_inactive))
+            else:
+                gyro_bleu.setBrush(QBrush(couleur_inactive))
+                gyro_rouge.setBrush(QBrush(QColor("red")))
 
     def demarrer_pause(self):
         if self.simulation_active:
@@ -567,6 +632,7 @@ class FenetrePrincipale(QMainWindow):
             self.timer.stop()
             self.timer_feux.stop()
             self.timer_statistiques.stop()
+            self.statusBar().showMessage("Simulation en pause")
         else:
             self.simulation_active = True
             self.dernier_instant_actif = time.monotonic()
@@ -574,6 +640,7 @@ class FenetrePrincipale(QMainWindow):
             self.timer.start(20)
             self.timer_feux.start(5000)
             self.timer_statistiques.start(5000)
+            self.statusBar().showMessage("Simulation démarrée", 3000)
 
     def actualiser_temps_simulation_actif(self):
         if self.simulation_active and self.dernier_instant_actif is not None:
@@ -592,6 +659,41 @@ class FenetrePrincipale(QMainWindow):
             return 0.0
         return self.temps_total_trajets_termines / self.nombre_trajets_termines
 
+    def obtenir_statistiques(self):
+        return {
+            "type": "statistiques",
+            "vehicules_actifs": len(self.vehicules),
+            "vehicules_arrives": self.vehicules_arrives,
+            "vehicules_prioritaires": sum(
+                1 for vehicule in self.vehicules if vehicule.est_urgent
+            ),
+            "temps_moyen_trajet": self.calculer_temps_moyen_trajet(),
+            "vehicules_attente_feu": self.compter_vehicules_attente_feu(),
+            "vehicules_bouchon": self.compter_vehicules_bouchon(),
+        }
+
+    def actualiser_statistiques_interface(self):
+        statistiques = self.obtenir_statistiques()
+        self.labels_statistiques["vehicules_actifs"].setText(
+            str(statistiques["vehicules_actifs"])
+        )
+        self.labels_statistiques["vehicules_arrives"].setText(
+            str(statistiques["vehicules_arrives"])
+        )
+        self.labels_statistiques["vehicules_prioritaires"].setText(
+            str(statistiques["vehicules_prioritaires"])
+        )
+        self.labels_statistiques["temps_moyen_trajet"].setText(
+            f"{statistiques['temps_moyen_trajet']:.2f} s"
+        )
+        self.labels_statistiques["vehicules_attente_feu"].setText(
+            str(statistiques["vehicules_attente_feu"])
+        )
+        self.labels_statistiques["vehicules_bouchon"].setText(
+            str(statistiques["vehicules_bouchon"])
+        )
+        return statistiques
+
     def vehicule_attend_au_feu(self, vehicule):
         return (
             vehicule.avancement >= 1
@@ -602,17 +704,48 @@ class FenetrePrincipale(QMainWindow):
         return sum(1 for vehicule in self.vehicules if self.vehicule_attend_au_feu(vehicule))
 
     def vehicule_bloque_par_un_autre(self, vehicule):
-        for autre_vehicule in self.vehicules:
+        indice_vehicule = self.vehicules.index(vehicule)
+
+        for indice_autre, autre_vehicule in enumerate(self.vehicules):
             if autre_vehicule == vehicule:
                 continue
 
             meme_depart = autre_vehicule.depart == vehicule.depart
             meme_arrivee = autre_vehicule.arrivee == vehicule.arrivee
-            devant = autre_vehicule.avancement > vehicule.avancement
+            devant = (
+                autre_vehicule.avancement > vehicule.avancement
+                or (
+                    autre_vehicule.avancement == vehicule.avancement
+                    and indice_autre < indice_vehicule
+                )
+            )
 
             if meme_depart and meme_arrivee and devant:
+                x1, y1 = self.scene.positions[vehicule.depart]
+                x2, y2 = self.scene.positions[vehicule.arrivee]
+                longueur = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+                if longueur == 0:
+                    continue
+
                 distance = autre_vehicule.avancement - vehicule.avancement
-                if distance < self.distance_securite:
+                marge_pixels = 22 + vehicule.vitesse * (20 / 300) * longueur
+                distance_requise = max(self.distance_securite, marge_pixels / longueur)
+
+                feu_rouge_devant = not self.graphe.est_vert(
+                    autre_vehicule.arrivee,
+                    autre_vehicule.depart
+                )
+                if feu_rouge_devant:
+                    distance_arret = min(28, longueur * 0.5)
+                    avancement_ligne_arret = 1 - distance_arret / longueur
+                    if autre_vehicule.avancement >= avancement_ligne_arret:
+                        distance_requise = max(
+                            distance_requise,
+                            (distance_arret + marge_pixels) / longueur
+                        )
+
+                if distance < distance_requise:
                     if vehicule.est_urgent:
                         if self.vehicule_ecarte_pour_prioritaire(autre_vehicule, vehicule):
                             continue
@@ -635,26 +768,16 @@ class FenetrePrincipale(QMainWindow):
         if self.simulation_active == False:
             return
 
-        temps_moyen = self.calculer_temps_moyen_trajet()
-        vehicules_attente_feu = self.compter_vehicules_attente_feu()
-        vehicules_bouchon = self.compter_vehicules_bouchon()
+        statistiques = self.actualiser_statistiques_interface()
+        temps_moyen = statistiques["temps_moyen_trajet"]
+        vehicules_attente_feu = statistiques["vehicules_attente_feu"]
+        vehicules_bouchon = statistiques["vehicules_bouchon"]
         print(
             f"Temps moyen trajet : {temps_moyen:.2f} s | "
             f"En attente au feu : {vehicules_attente_feu} | "
             f"En bouchon : {vehicules_bouchon}"
         )
 
-        statistiques = {
-            "type": "statistiques",
-            "vehicules_actifs": len(self.vehicules),
-            "vehicules_arrives": self.vehicules_arrives,
-            "vehicules_prioritaires": sum(
-                1 for vehicule in self.vehicules if vehicule.est_urgent
-            ),
-            "temps_moyen_trajet": temps_moyen,
-            "vehicules_attente_feu": vehicules_attente_feu,
-            "vehicules_bouchon": vehicules_bouchon,
-        }
         message = json.dumps(statistiques)
 
         # Un verrou évite de démarrer un nouvel envoi si le précédent est bloqué.
@@ -719,8 +842,39 @@ class FenetrePrincipale(QMainWindow):
         x1, y1 = self.scene.positions[vehicule.depart]
         x2, y2 = self.scene.positions[vehicule.arrivee]
 
-        x = x1 + (x2 - x1) * vehicule.avancement
-        y = y1 + (y2 - y1) * vehicule.avancement
+        dx = x2 - x1
+        dy = y2 - y1
+        avancement_visuel = vehicule.avancement
+        longueur = math.sqrt(dx * dx + dy * dy)
+        feu_rouge = not self.graphe.est_vert(vehicule.arrivee, vehicule.depart)
+        indice_vehicule = self.vehicules.index(vehicule)
+        vehicule_devant = False
+
+        for indice_autre, autre_vehicule in enumerate(self.vehicules):
+            if autre_vehicule == vehicule:
+                continue
+
+            meme_depart = autre_vehicule.depart == vehicule.depart
+            meme_arrivee = autre_vehicule.arrivee == vehicule.arrivee
+            devant = (
+                autre_vehicule.avancement > vehicule.avancement
+                or (
+                    autre_vehicule.avancement == vehicule.avancement
+                    and indice_autre < indice_vehicule
+                )
+            )
+            if meme_depart and meme_arrivee and devant:
+                vehicule_devant = True
+                break
+
+        if longueur > 0 and not vehicule_devant:
+            if feu_rouge or vehicule.avancement >= 1:
+                distance_arret = min(28, longueur * 0.5)
+                avancement_arret = 1 - distance_arret / longueur
+                avancement_visuel = min(vehicule.avancement, avancement_arret)
+
+        x = x1 + dx * avancement_visuel
+        y = y1 + dy * avancement_visuel
 
         decalage_x, decalage_y = self.scene.calculer_decalage_perpendiculaire(
             x1,
@@ -736,6 +890,16 @@ class FenetrePrincipale(QMainWindow):
             x = x + decalage_x * self.decalage_laisser_passer
             y = y + decalage_y * self.decalage_laisser_passer
 
+        if vehicule in self.transitions_feux:
+            depart_x, depart_y = self.transitions_feux[vehicule]
+            progression_transition = min(vehicule.avancement / 0.20, 1)
+            x = depart_x + (x - depart_x) * progression_transition
+            y = depart_y + (y - depart_y) * progression_transition
+            if progression_transition >= 1:
+                del self.transitions_feux[vehicule]
+
+        angle = math.degrees(math.atan2(dy, dx))
+        vehicule.graphique.setRotation(angle)
         vehicule.graphique.setPos(x, y)
 
     def mettre_a_jour_positions_vehicules(self):
@@ -749,12 +913,26 @@ class FenetrePrincipale(QMainWindow):
         self.actualiser_temps_simulation_actif()
 
         vehicules_encore_actifs = []
+        statistiques_a_actualiser = False
         for vehicule in self.vehicules:
             self.mettre_a_jour_position_vehicule(vehicule)
+            position_avant_avancement = vehicule.graphique.pos()
+            depart_avant = vehicule.depart
+            arrivee_avant = vehicule.arrivee
+            fin_arete = vehicule.avancement >= 1
 
             if self.vehicule_peut_avancer(vehicule):
                 resultat = vehicule.avancer(self.graphe)
                 self.afficher_feux_selon_graphe()
+                if (
+                    fin_arete
+                    and resultat != "arrive"
+                    and (vehicule.depart != depart_avant or vehicule.arrivee != arrivee_avant)
+                ):
+                    self.transitions_feux[vehicule] = (
+                        position_avant_avancement.x(),
+                        position_avant_avancement.y()
+                    )
             else:
                 resultat = "en cours"
 
@@ -764,6 +942,7 @@ class FenetrePrincipale(QMainWindow):
             if resultat != "arrive":
                 vehicules_encore_actifs.append(vehicule)
             else:
+                statistiques_a_actualiser = True
                 self.vehicules_arrives += 1
                 duree_trajet = (
                     self.temps_simulation_actif - vehicule.temps_debut_trajet_actif
@@ -773,6 +952,8 @@ class FenetrePrincipale(QMainWindow):
                 if vehicule == self.vehicule_selectionne:
                     self.deselectionner_vehicule()
                 self.scene.removeItem(vehicule.graphique)
+                self.transitions_feux.pop(vehicule, None)
+                self.gyrophare_vehicules.pop(vehicule, None)
 
         self.vehicules = vehicules_encore_actifs
 
@@ -781,7 +962,11 @@ class FenetrePrincipale(QMainWindow):
             if vehicule is None:
                 break
 
-        self.mettre_a_jour_carte()
+        if statistiques_a_actualiser:
+            self.actualiser_statistiques_interface()
+
+        if not self.gyrophare_vehicules:
+            self.timer_gyrophare.stop()
 
 
 app = QApplication(sys.argv)

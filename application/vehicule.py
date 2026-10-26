@@ -9,6 +9,13 @@ class Vehicule:
         self.est_urgent = est_urgent
         self.vitesse = vitesse
         self.chemin = dijkstra(graphe, depart, destination)
+
+        if self.chemin is None:
+            raise ValueError("Aucun chemin ne relie le départ à la destination.")
+
+        if len(self.chemin) < 2:
+            raise ValueError("Le départ et la destination doivent être différents.")
+
         self.index_chemin = 0
         self.arrivee = self.chemin[self.index_chemin + 1]
 

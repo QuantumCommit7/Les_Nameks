@@ -2,10 +2,6 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import QGraphicsView
 
-from fond_carte import REF_X, REF_Y
-from fond_carte import FondCarte
-
-
 class VueGraphe(QGraphicsView):
     """oui, cette partie-ci sert pour la mollette """
 
@@ -25,7 +21,16 @@ class VueGraphe(QGraphicsView):
         super().showEvent(event)
         if not self.deja_centree:
             self.deja_centree = True
-            QTimer.singleShot(0, lambda: self.centerOn(REF_X, REF_Y))
+            QTimer.singleShot(0, lambda: self.centerOn(450, 300))
+
+    def ajuster_au_graphe(self):
+        rectangle = self.scene().itemsBoundingRect()
+        if rectangle.isNull():
+            return
+
+        marge = max(rectangle.width(), rectangle.height()) * 0.04
+        rectangle.adjust(-marge, -marge, marge, marge)
+        self.fitInView(rectangle, Qt.AspectRatioMode.KeepAspectRatio)
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y()

@@ -14,9 +14,14 @@ def dijkstra(graph, start, stop):
 
     Returns:
         renvoie la liste du parcours pour rejoindre le point A au point B le plus rapidement
+        ou None si un des noeuds n'existe pas ou si aucun chemin n'est disponible
     """
     if start not in graph.noeuds or stop not in graph.noeuds:
-        return f"les noeuds n'existent pas dans le graphe, créer les avant de débuter"
+        return None
+
+    if start == stop:
+        return [start]
+
     detail = {}
     plus_proche = None
     for elt in graph.noeuds:
@@ -36,19 +41,23 @@ def dijkstra(graph, start, stop):
                     plus_proche = elt
         if plus_proche is None:
             break
+
+        if detail[plus_proche]["distance"] == inf:
+            break
+
         detail[plus_proche]["traité"] = True
 
         if plus_proche == stop:
             break
 
-        for voisin in graph.aretes[plus_proche]:
+        for voisin in graph.aretes.get(plus_proche, {}):
             distance = detail[plus_proche]["distance"] + graph.aretes[plus_proche][voisin]
             if distance < detail[voisin]["distance"]:
                 detail[voisin]["distance"] = distance
                 detail[voisin]["precedent"] = plus_proche
 
     if detail[stop]["distance"] == inf:
-        return f"aucun lien existant, connexion impossible"
+        return None
 
     chemin = []
     actuel = stop

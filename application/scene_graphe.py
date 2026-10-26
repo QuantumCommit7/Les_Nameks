@@ -2,10 +2,9 @@ import math
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QBrush, QColor
-from PyQt6.QtWidgets import QGraphicsScene, QInputDialog, QMenu
+from PyQt6.QtWidgets import QGraphicsScene, QInputDialog, QMessageBox, QMenu
 
 from graphes import Graphes
-from fond_carte import FondCarte
 
 class SceneGraphe(QGraphicsScene):
     def __init__(self, graphe: Graphes):
@@ -23,14 +22,7 @@ class SceneGraphe(QGraphicsScene):
         self.noeud_a_deplacer = None
         self.deplacement_en_cours = False
         self.fenetre = None
-        self.fond = FondCarte()
-        self.fond.tuile_prete.connect(self.rafraichir_fond)
-
-    def drawBackground(self, painter, rect):
-        self.fond.dessiner(painter, rect)
-
-    def rafraichir_fond(self, rect):
-        self.invalidate(rect, QGraphicsScene.SceneLayer.BackgroundLayer)
+        self.setBackgroundBrush(QBrush(QColor("#eef3f1")))
 
     def mousePressEvent(self, event):
         position = event.scenePos()
@@ -50,7 +42,10 @@ class SceneGraphe(QGraphicsScene):
 
         if self.fenetre is not None:
             for vehicule in self.fenetre.vehicules:
-                if item_clique == vehicule.graphique:
+                if item_clique is not None and (
+                    item_clique == vehicule.graphique
+                    or vehicule.graphique.isAncestorOf(item_clique)
+                ):
                     self.fenetre.selectionner_vehicule(vehicule)
                     return
 
@@ -96,6 +91,8 @@ class SceneGraphe(QGraphicsScene):
         if self.noeud_en_attente is None:
             self.noeud_en_attente = nom
             print(f"{nom} sélectionné comme départ, cliquez sur le nœud d'arrivée")
+            if self.fenetre is not None:
+                self.fenetre.statusBar().showMessage("Sélectionnez le second nœud", 3000)
             return
 
         depart = self.noeud_en_attente
@@ -121,6 +118,8 @@ class SceneGraphe(QGraphicsScene):
 
         self.graphe.ajouter_arete(depart, arrivee, poids)
         self.dessiner_arete(depart, arrivee)
+        if self.fenetre is not None:
+            self.fenetre.statusBar().showMessage("Route créée", 3000)
         print(self.graphe.aretes)
 
     def cle_arete(self, depart, arrivee):
@@ -147,6 +146,8 @@ class SceneGraphe(QGraphicsScene):
         self.mode_ajout_noeud = True
         self.noeud_en_attente = None
         print("Cliquez dans le vide pour placer le nouveau noeud")
+        if self.fenetre is not None:
+            self.fenetre.statusBar().showMessage("Cliquez dans le graphe pour placer un nœud", 3000)
 
     def afficher_menu_noeud(self, nom, position):
         menu = QMenu()
@@ -161,6 +162,14 @@ class SceneGraphe(QGraphicsScene):
             self.supprimer_noeud(nom)
 
     def modifier_nom_noeud(self, ancien_nom):
+        if self.fenetre is not None and self.fenetre.vehicules:
+            QMessageBox.warning(
+                self.fenetre,
+                "Modification impossible",
+                "Retirez d'abord tous les véhicules avant de renommer un nœud."
+            )
+            return
+
         nouveau_nom, valide = QInputDialog.getText(
             None,
             "Modifier le nom",
@@ -198,6 +207,14 @@ class SceneGraphe(QGraphicsScene):
         self.mettre_a_jour_feux_graphique()
 
     def supprimer_noeud(self, nom):
+        if self.fenetre is not None and self.fenetre.vehicules:
+            QMessageBox.warning(
+                self.fenetre,
+                "Modification impossible",
+                "Retirez d'abord tous les véhicules avant de supprimer un nœud."
+            )
+            return
+
         try:
             self.graphe.supprimer_noeud(nom)
         except ValueError as erreur:
@@ -308,6 +325,8 @@ class SceneGraphe(QGraphicsScene):
             return
 
         self.dessiner_noeud(nom, x, y)
+        if self.fenetre is not None:
+            self.fenetre.statusBar().showMessage("Nœud créé", 3000)
 
     def dessiner_noeud(self, nom, x, y):
         cercle = self.addEllipse(
@@ -410,6 +429,7 @@ class SceneGraphe(QGraphicsScene):
             texte_poids.setPlainText(str(poids))
         else:
             texte_poids = self.addText(str(poids))
+            texte_poids.setDefaultTextColor(QColor("black"))
             texte_poids.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
             texte_poids.setZValue(4)
             self.textes_poids[cle] = texte_poids
@@ -447,7 +467,6 @@ class SceneGraphe(QGraphicsScene):
                     12,
                     12
                 )
-
                 if groupe == 0:
                     feu.setBrush(QBrush(QColor("green")))
                 else:
