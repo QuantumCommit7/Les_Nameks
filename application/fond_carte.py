@@ -1,12 +1,11 @@
 """
-Fond de carte (tuiles OpenStreetMap) pour l'onglet « Schéma ».
+Fond de carte pour l'onglet « Schéma ».
 
 - FondCarte : télécharge / met en cache les tuiles et les dessine derrière la scène.
 - VueGraphe : QGraphicsView avec zoom à la molette et déplacement de la carte.
 
 Les coordonnées de la scène (celles des nœuds) sont des pixels de carte au zoom ZREF :
-1 unité de scène = 1 pixel Web Mercator au zoom ZREF. Le point (REF_X, REF_Y) de la scène
-correspond à (CENTRE_LAT, CENTRE_LON). Les nœuds gardent donc leurs positions actuelles,
+Le point (REF_X, REF_Y) de la scène correspond à (CENTRE_LAT, CENTRE_LON). Les nœuds gardent donc leurs positions actuelles,
 et on peut convertir scène <-> GPS avec scene_vers_latlon / latlon_vers_scene.
 """
 import json
@@ -140,7 +139,7 @@ class FondCarte(QObject):
         finally:
             reponse.deleteLater()
 
-    # ---------------- tuiles ----------------
+    #  tuiles 
     def chemin_tuile(self, z, x, y):
         return DOSSIER_CACHE / str(z) / str(x) / f"{y}.png"
 
@@ -150,7 +149,7 @@ class FondCarte(QObject):
 
     def ranger(self, cle, pixmap):
         if len(self.cache) >= MAX_TUILES_MEMOIRE:
-            del self.cache[next(iter(self.cache))]   # supprime la plus ancienne
+            del self.cache[next(iter(self.cache))]   # supprime l'ancienne
         self.cache[cle] = pixmap
 
     def obtenir_tuile(self, z, tx, ty):
@@ -217,8 +216,8 @@ class FondCarte(QObject):
 
         z = ZREF + round(math.log2(echelle))
         z = max(ZMIN, min(ZMAX, z))
-        facteur = 2 ** (z - ZREF)              # pixels de tuile par unité de scène
-        taille_scene = TAILLE_TUILE / facteur  # taille d'une tuile en unités de scène
+        facteur = 2 ** (z - ZREF)              # pixels de tuile
+        taille_scene = TAILLE_TUILE / facteur  # taille d'une tuile
         n = 2 ** z
 
         x0 = math.floor((self.origine_x + rect.left()) * facteur / TAILLE_TUILE)
@@ -230,7 +229,7 @@ class FondCarte(QObject):
             return
 
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        marge = 0.5 / echelle   # petit recouvrement pour éviter les fines lignes entre tuiles
+        marge = 0.5 / echelle   
 
         for tx in range(max(0, x0), min(n - 1, x1) + 1):
             for ty in range(max(0, y0), min(n - 1, y1) + 1):
