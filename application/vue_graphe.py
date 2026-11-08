@@ -3,7 +3,7 @@ from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import QGraphicsView
 
 class VueGraphe(QGraphicsView):
-    """oui, cette partie-ci sert pour la mollette """
+    """Vue de la scène avec zoom à la molette et déplacement à la souris."""
 
     def __init__(self, scene):
         super().__init__(scene)
@@ -24,6 +24,7 @@ class VueGraphe(QGraphicsView):
             QTimer.singleShot(0, lambda: self.centerOn(450, 300))
 
     def ajuster_au_graphe(self):
+        """Centre et ajuste la vue pour faire tenir les éléments du graphe."""
         rectangle = self.scene().itemsBoundingRect()
         if rectangle.isNull():
             return
@@ -33,15 +34,18 @@ class VueGraphe(QGraphicsView):
         self.fitInView(rectangle, Qt.AspectRatioMode.KeepAspectRatio)
 
     def wheelEvent(self, event):
+        """Zoome autour du curseur, en gardant une échelle lisible."""
         delta = event.angleDelta().y()
         if delta == 0:
             return
+        # Chaque cran de molette multiplie l'échelle par 1,25 (ou son inverse).
         facteur = 1.25 ** (delta / 120)
         nouvelle_echelle = self.transform().m11() * facteur
         if 0.25 <= nouvelle_echelle <= 8:
             self.scale(facteur, facteur)
 
     def mousePressEvent(self, event):
+        """Démarre un déplacement avec le bouton du milieu ou le clic droit dans le vide."""
         bouton = event.button()
         deplacer = bouton == Qt.MouseButton.MiddleButton
 
@@ -58,6 +62,7 @@ class VueGraphe(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        """Déplace les barres de défilement pendant un glisser-déplacer."""
         if self.deplacement_en_cours:
             point = event.position().toPoint()
             delta = point - self.dernier_point
@@ -69,6 +74,7 @@ class VueGraphe(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """Termine le déplacement de la vue et restaure le curseur normal."""
         if self.deplacement_en_cours and event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.RightButton):
             self.deplacement_en_cours = False
             self.unsetCursor()

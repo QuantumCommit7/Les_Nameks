@@ -1,3 +1,5 @@
+"""Ancienne démonstration terminal; l'application graphique démarre dans interface.py."""
+
 from setting_circuit import *
 import time
 

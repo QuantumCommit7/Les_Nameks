@@ -20,7 +20,10 @@ import random
 
 
 class FenetrePrincipale(QMainWindow):
+    """Assemble l'interface et coordonne la simulation du trafic."""
+
     def __init__(self):
+        """Initialise l'état, la scène, les widgets et les minuteries Qt."""
         super().__init__()
 
         self.setWindowTitle("Simulateur de trafic")
@@ -30,8 +33,10 @@ class FenetrePrincipale(QMainWindow):
         self.vehicules = []
         self.vehicule_selectionne = None
         self.pen_routes_avant_selection = {}
+        # Écarts exprimés en proportion de la longueur de l'arête.
         self.distance_securite = 0.08
         self.distance_laisser_passer = 0.20
+        # Multiplicateur du décalage graphique d'une voie pour laisser passer.
         self.decalage_laisser_passer = 2
         self.simulation_active = False
         self.nombre_vehicules_voulu = 0
@@ -52,12 +57,14 @@ class FenetrePrincipale(QMainWindow):
             QColor("#cb6c27"),
         ]
 
+        # La scène dessine le réseau; la vue ajoute zoom et déplacement.
         self.scene = SceneGraphe(self.graphe)
         self.scene.fenetre = self
         self.view = VueGraphe(self.scene)
 
         self.feu_vert = True
 
+        # Les boutons relient les actions visibles aux méthodes de la fenêtre.
         self.bouton_noeud = QPushButton("Ajouter un nœud")
         self.bouton_noeud.clicked.connect(self.scene.activer_ajout_noeud)
 
@@ -78,6 +85,7 @@ class FenetrePrincipale(QMainWindow):
         self.combo_densite.addItems(list(DENSITES_TEST.keys()))
         self.combo_densite.setCurrentText("Faible")
 
+        # Construire le panneau latéral par sections : simulation, véhicules, graphe, mesures.
         panneau = QWidget()
         panneau.setObjectName("panneauLateral")
         panneau.setFixedWidth(260)
@@ -166,6 +174,7 @@ class FenetrePrincipale(QMainWindow):
 
         conteneur.setLayout(layout)
 
+        # Placer le panneau et la vue dans la fenêtre, puis appliquer le style commun.
         self.setCentralWidget(conteneur)
         self.setMinimumSize(850, 560)
         self.setStyleSheet("""
@@ -206,6 +215,7 @@ class FenetrePrincipale(QMainWindow):
         """)
         self.statusBar().showMessage("Simulation en pause")
 
+        # Chaque minuterie Qt appelle sa méthode dans le fil de l'interface.
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick)
 
@@ -220,6 +230,7 @@ class FenetrePrincipale(QMainWindow):
         self.actualiser_statistiques_interface()
 
     def trouver_groupes(self, noeud):
+        """Répartit quatre routes en deux phases opposées selon leur angle."""
         routes = list(self.graphe.aretes[noeud].keys())
 
         x, y = self.scene.positions[noeud]
@@ -309,6 +320,7 @@ class FenetrePrincipale(QMainWindow):
         print(f"Groupe rouge : {groupes[1]}")
 
     def creer_graphe_test(self):
+        """Réinitialise la scène puis construit le réseau et les véhicules de test."""
         self.deselectionner_vehicule()
 
         densite = self.combo_densite.currentText()
@@ -373,6 +385,7 @@ class FenetrePrincipale(QMainWindow):
         self.statusBar().showMessage("Graphe de test créé", 3000)
 
     def mettre_a_jour_feux(self):
+        """Applique la phase courante à chaque feu et rafraîchit son dessin."""
 
         for noeud in self.scene.feux:
 
@@ -404,7 +417,13 @@ class FenetrePrincipale(QMainWindow):
                     )
 
     def ajouter_vehicule(self, depart, destination, vitesse, est_urgent=False, afficher_erreur=True):
+        """Crée le modèle et le rectangle graphique d'un véhicule.
+
+        Un véhicule prioritaire reçoit une vitesse augmentée selon les règles
+        actuelles et des éléments graphiques de gyrophare.
+        """
         if est_urgent:
+            # Le bonus de vitesse est plafonné à 1 pour rester dans la plage choisie.
             vitesse = vitesse * 1.3
 
             if vitesse > 1.0:
@@ -518,6 +537,7 @@ class FenetrePrincipale(QMainWindow):
         )
 
     def creer_vehicule(self):
+        """Demande les paramètres à l'utilisateur puis ajoute le véhicule choisi."""
         depart, valide = QInputDialog.getItem(
             self,
             "Départ",
@@ -613,6 +633,7 @@ class FenetrePrincipale(QMainWindow):
         self.mettre_a_jour_feux()
 
     def changer_gyrophare(self):
+        """Alterne les couleurs actives des gyrophares prioritaires."""
         self.gyrophare_bleu_actif = not self.gyrophare_bleu_actif
         couleur_inactive = QColor("#59636d")
 
@@ -625,6 +646,7 @@ class FenetrePrincipale(QMainWindow):
                 gyro_rouge.setBrush(QBrush(QColor("red")))
 
     def demarrer_pause(self):
+        """Démarre ou suspend les minuteries de simulation, de feux et de mesures."""
         if self.simulation_active:
             self.actualiser_temps_simulation_actif()
             self.simulation_active = False
@@ -637,6 +659,7 @@ class FenetrePrincipale(QMainWindow):
             self.simulation_active = True
             self.dernier_instant_actif = time.monotonic()
             self.bouton_simulation.setText("Pause")
+            # Un tick d'animation toutes les 20 ms; feux et relevés toutes les 5 s.
             self.timer.start(20)
             self.timer_feux.start(5000)
             self.timer_statistiques.start(5000)
@@ -660,6 +683,7 @@ class FenetrePrincipale(QMainWindow):
         return self.temps_total_trajets_termines / self.nombre_trajets_termines
 
     def obtenir_statistiques(self):
+        """Construit le relevé utilisé à la fois par l'interface et le client TCP."""
         return {
             "type": "statistiques",
             "vehicules_actifs": len(self.vehicules),
@@ -695,15 +719,18 @@ class FenetrePrincipale(QMainWindow):
         return statistiques
 
     def vehicule_attend_au_feu(self, vehicule):
+        """Vrai si le véhicule a atteint l'intersection et que son feu est rouge."""
         return (
             vehicule.avancement >= 1
             and not self.graphe.est_vert(vehicule.arrivee, vehicule.depart)
         )
 
     def compter_vehicules_attente_feu(self):
+        """Compte les véhicules qui patientent à un feu rouge."""
         return sum(1 for vehicule in self.vehicules if self.vehicule_attend_au_feu(vehicule))
 
     def vehicule_bloque_par_un_autre(self, vehicule):
+        """Détecte un véhicule trop proche d'un autre sur la même arête."""
         indice_vehicule = self.vehicules.index(vehicule)
 
         for indice_autre, autre_vehicule in enumerate(self.vehicules):
@@ -729,6 +756,7 @@ class FenetrePrincipale(QMainWindow):
                     continue
 
                 distance = autre_vehicule.avancement - vehicule.avancement
+                # Marge visuelle plus distance que le véhicule parcourt au prochain tick.
                 marge_pixels = 22 + vehicule.vitesse * (20 / 300) * longueur
                 distance_requise = max(self.distance_securite, marge_pixels / longueur)
 
@@ -754,6 +782,7 @@ class FenetrePrincipale(QMainWindow):
         return False
 
     def compter_vehicules_bouchon(self):
+        """Compte les véhicules ralentis par un autre, hors attente au feu."""
         nombre = 0
         for vehicule in self.vehicules:
             if self.vehicule_attend_au_feu(vehicule):
@@ -765,6 +794,7 @@ class FenetrePrincipale(QMainWindow):
         return nombre
 
     def envoyer_statistiques(self):
+        """Prépare un relevé et démarre son envoi réseau sans bloquer l'interface."""
         if self.simulation_active == False:
             return
 
@@ -796,6 +826,7 @@ class FenetrePrincipale(QMainWindow):
             print(f"Impossible de démarrer l'envoi des statistiques : {erreur}")
 
     def envoyer_statistiques_thread(self, message):
+        """Envoie le JSON au serveur et libère le verrou même en cas d'erreur."""
         try:
             envoyer_message(message, timeout=3)
         except OSError as erreur:
@@ -806,6 +837,11 @@ class FenetrePrincipale(QMainWindow):
             self.verrou_envoi_statistiques.release()
 
     def vehicule_ecarte_pour_prioritaire(self, vehicule, vehicule_prioritaire):
+        """Indique si un véhicule normal doit laisser de la place au prioritaire.
+
+        La règle ne s'applique que sur la même arête, lorsque le véhicule
+        prioritaire est derrière et suffisamment proche.
+        """
         if vehicule.est_urgent:
             return False
 
@@ -839,6 +875,7 @@ class FenetrePrincipale(QMainWindow):
         return not self.vehicule_bloque_par_un_autre(vehicule)
 
     def mettre_a_jour_position_vehicule(self, vehicule):
+        """Calcule la position, le décalage de voie et l'orientation graphique."""
         x1, y1 = self.scene.positions[vehicule.depart]
         x2, y2 = self.scene.positions[vehicule.arrivee]
 
@@ -867,12 +904,15 @@ class FenetrePrincipale(QMainWindow):
                 vehicule_devant = True
                 break
 
+        # Limiter la position affichée avant le carrefour si le feu est rouge.
         if longueur > 0 and not vehicule_devant:
             if feu_rouge or vehicule.avancement >= 1:
+                # Garder le véhicule à 28 pixels du nœud, ou plus près sur une petite arête.
                 distance_arret = min(28, longueur * 0.5)
                 avancement_arret = 1 - distance_arret / longueur
                 avancement_visuel = min(vehicule.avancement, avancement_arret)
 
+        # Interpolation entre les coordonnées des deux nœuds de l'arête.
         x = x1 + dx * avancement_visuel
         y = y1 + dy * avancement_visuel
 
@@ -892,12 +932,14 @@ class FenetrePrincipale(QMainWindow):
 
         if vehicule in self.transitions_feux:
             depart_x, depart_y = self.transitions_feux[vehicule]
+            # Lisser le changement d'arête sur les premiers 20 % du mouvement.
             progression_transition = min(vehicule.avancement / 0.20, 1)
             x = depart_x + (x - depart_x) * progression_transition
             y = depart_y + (y - depart_y) * progression_transition
             if progression_transition >= 1:
                 del self.transitions_feux[vehicule]
 
+        # atan2 fournit l'angle du segment, nécessaire à la rotation du rectangle.
         angle = math.degrees(math.atan2(dy, dx))
         vehicule.graphique.setRotation(angle)
         vehicule.graphique.setPos(x, y)
@@ -907,6 +949,7 @@ class FenetrePrincipale(QMainWindow):
             self.mettre_a_jour_position_vehicule(vehicule)
 
     def tick(self):
+        """Avance tous les véhicules, retire les arrivés et actualise les compteurs."""
         if self.simulation_active == False:
             return
 

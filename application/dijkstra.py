@@ -1,20 +1,22 @@
+"""Recherche d'itinéraire dans le graphe routier du simulateur."""
+
 from graphes import *
 from math import inf # inportation de l'infini pour définir dans dijkstra la distance a l'initialisaton du nœud
 
 def dijkstra(graph, start, stop):
     """
-    Fonction basée sur l'algorithme de dijkstra. Il va permettre de
-    trouver le chemin le plus court dans un graphe pondéré d'un point A
-    à un point B.
+    Recherche un chemin de poids minimal entre deux nœuds.
 
     Args:
-            graph: Objet de la class Graph.
-            start: noeud correspondant au point A
-            stop: noeud correspondant au point B
+        graph: Graphe contenant les nœuds et les routes pondérées.
+        start: Nom du nœud de départ.
+        stop: Nom du nœud d'arrivée.
 
     Returns:
-        renvoie la liste du parcours pour rejoindre le point A au point B le plus rapidement
-        ou None si un des noeuds n'existe pas ou si aucun chemin n'est disponible
+        La liste des nœuds du départ à l'arrivée, ou ``None`` si un
+        nœud n'existe pas ou si aucun chemin n'est disponible.
+
+    L'algorithme suppose que les poids des routes sont non négatifs.
     """
     if start not in graph.noeuds or stop not in graph.noeuds:
         return None
@@ -22,6 +24,7 @@ def dijkstra(graph, start, stop):
     if start == stop:
         return [start]
 
+    # Pour chaque nœud, mémoriser le meilleur coût connu et son précédent.
     detail = {}
     plus_proche = None
     for elt in graph.noeuds:
@@ -31,6 +34,7 @@ def dijkstra(graph, start, stop):
             detail[elt] = {"distance" : inf, "precedent" : None, "traité" : False}
     while True:
         plus_proche = None
+        # Choisir le nœud non traité dont la distance provisoire est la plus petite.
         for elt in detail:
             if detail[elt]["traité"] == True:
                 pass
@@ -50,6 +54,7 @@ def dijkstra(graph, start, stop):
         if plus_proche == stop:
             break
 
+        # Vérifier si passer par le nœud choisi améliore le coût de ses voisins.
         for voisin in graph.aretes.get(plus_proche, {}):
             distance = detail[plus_proche]["distance"] + graph.aretes[plus_proche][voisin]
             if distance < detail[voisin]["distance"]:
@@ -59,6 +64,7 @@ def dijkstra(graph, start, stop):
     if detail[stop]["distance"] == inf:
         return None
 
+    # Reconstituer le trajet en remontant les précédents depuis l'arrivée.
     chemin = []
     actuel = stop
     while actuel != start:

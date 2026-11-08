@@ -1,3 +1,5 @@
+"""Serveur TCP qui valide les relevés JSON et les enregistre dans MariaDB."""
+
 import json
 import math
 import socket
@@ -43,10 +45,15 @@ def lire_configuration_db():
 
 
 def recevoir_message(connexion):
-    """Lit un message jusqu'au saut de ligne ou à la fermeture du client."""
+    """Lit au plus un message, jusqu'au saut de ligne ou à la fermeture du client.
+
+    Retourne le texte UTF-8 et indique si le message était terminé par une
+    nouvelle ligne, exigée pour accepter un relevé de statistiques.
+    """
     donnees = bytearray()
 
     while b"\n" not in donnees:
+        # TCP peut découper une ligne JSON en plusieurs blocs reçus.
         if len(donnees) > TAILLE_MAX_MESSAGE:
             raise ValueError("le message dépasse la taille maximale de 64 Kio")
 
@@ -104,6 +111,7 @@ def enregistrer_statistiques(donnees):
                     donnees["vehicules_bouchon"],
                 ),
             )
+        # Confirmer l'insertion avant de fermer la connexion MariaDB.
         connexion_db.commit()
         print("Statistiques enregistrées dans MariaDB.")
     except ImportError:
@@ -142,6 +150,7 @@ def traiter_message(message, adresse, termine_par_ligne):
         print(f"Message reçu de {adresse[0]} : {message}")
         return
 
+    # Le saut de ligne marque la fin du message selon le protocole du client.
     if not termine_par_ligne:
         print(f"Statistiques invalides de {adresse[0]} : le JSON doit se terminer par un saut de ligne.")
         return
@@ -175,7 +184,7 @@ def traiter_message(message, adresse, termine_par_ligne):
 
 
 def gerer_client(connexion, adresse):
-    """Reçoit un message d'un client, le traite, puis ferme sa connexion."""
+    """Traite une connexion cliente puis la ferme, même si le message est invalide."""
     with connexion:
         print(f"Client connecté : {adresse[0]}:{adresse[1]}")
         try:
@@ -204,6 +213,7 @@ try:
                 print(f"Erreur réseau pendant l'écoute ({type(erreur).__name__}). Arrêt du serveur.")
                 break
 
+            # Un thread traite cette connexion pendant que l'écoute continue.
             thread = threading.Thread(
                 target=gerer_client,
                 args=(connexion, adresse),

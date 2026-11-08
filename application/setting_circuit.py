@@ -1,3 +1,5 @@
+"""Petit réseau de démonstration destiné au simulateur terminal historique."""
+
 from graphes import Graphes
 from vehicule import Vehicule
 

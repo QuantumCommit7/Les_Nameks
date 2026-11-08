@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import QGraphicsScene, QInputDialog, QMessageBox, QMenu
 from graphes import Graphes
 
 class SceneGraphe(QGraphicsScene):
+    """Gère les éléments graphiques et les interactions avec le graphe."""
+
     def __init__(self, graphe: Graphes):
         super().__init__()
         self.graphe = graphe
@@ -25,6 +27,7 @@ class SceneGraphe(QGraphicsScene):
         self.setBackgroundBrush(QBrush(QColor("#eef3f1")))
 
     def mousePressEvent(self, event):
+        """Dirige le clic vers le menu, la sélection ou le déplacement d'un objet."""
         position = event.scenePos()
         x = position.x()
         y = position.y()
@@ -61,6 +64,7 @@ class SceneGraphe(QGraphicsScene):
 
 
     def mouseMoveEvent(self, event):
+        """Déplace le nœud sélectionné et recalcule ses routes."""
         if self.noeud_a_deplacer is None:
             return
 
@@ -74,6 +78,7 @@ class SceneGraphe(QGraphicsScene):
         )
 
     def mouseReleaseEvent(self, event):
+        """Interprète un clic simple sans le confondre avec un glissement."""
         if event.button() != Qt.MouseButton.LeftButton:
             return
 
@@ -88,6 +93,7 @@ class SceneGraphe(QGraphicsScene):
                 self.gerer_clic_sur_noeud(nom)
 
     def gerer_clic_sur_noeud(self, nom):
+        """Utilise deux clics simples sur des nœuds pour créer une route."""
         if self.noeud_en_attente is None:
             self.noeud_en_attente = nom
             print(f"{nom} sélectionné comme départ, cliquez sur le nœud d'arrivée")
@@ -126,6 +132,11 @@ class SceneGraphe(QGraphicsScene):
         return tuple(sorted([depart, arrivee]))
 
     def calculer_decalage_perpendiculaire(self, x1, y1, x2, y2):
+        """Calcule le décalage latéral qui sépare les deux voies d'une route.
+
+        Le vecteur perpendiculaire est normalisé pour que l'écart reste
+        constant quelle que soit la longueur de la route.
+        """
         dx = x2 - x1
         dy = y2 - y1
 
@@ -359,10 +370,12 @@ class SceneGraphe(QGraphicsScene):
         }
 
     def dessiner_arete(self, depart, arrivee):
+        """Dessine les deux voies et le poids de la route entre deux nœuds."""
         cle = self.cle_arete(depart, arrivee)
         x1, y1 = self.positions[depart]
         x2, y2 = self.positions[arrivee]
 
+        # Arrêter les lignes au bord des cercles des nœuds, pas en leur centre.
         rayon = 15
 
         dx = x2 - x1
@@ -382,6 +395,7 @@ class SceneGraphe(QGraphicsScene):
         x2_bord = x2 - dx_norm * rayon
         y2_bord = y2 - dy_norm * rayon
 
+        # Décaler les deux segments de part et d'autre de l'axe de la route.
         decalage_x, decalage_y = self.calculer_decalage_perpendiculaire(
             x1,
             y1,
@@ -443,6 +457,7 @@ class SceneGraphe(QGraphicsScene):
         )
 
     def dessiner_feu(self, noeud, groupes):
+        """Dessine un indicateur coloré pour chaque direction des phases du feu."""
         x, y = self.positions[noeud]
 
         self.feux[noeud] = {}

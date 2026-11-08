@@ -32,8 +32,8 @@ fi
 echo "Étape 1/3 : actualisation de la liste des paquets..."
 "${SUDO[@]}" apt-get update
 
-echo "Étape 2/3 : installation de MariaDB et du connecteur Python PyMySQL..."
-"${SUDO[@]}" apt-get install -y mariadb-server python3-pymysql
+echo "Étape 2/3 : installation de MariaDB, PyMySQL et du support des environnements virtuels Python..."
+"${SUDO[@]}" apt-get install -y mariadb-server python3-pymysql python3-venv
 
 echo "Étape 3/3 : activation et démarrage de MariaDB..."
 "${SUDO[@]}" systemctl enable --now mariadb

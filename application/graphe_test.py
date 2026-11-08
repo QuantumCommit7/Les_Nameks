@@ -1,3 +1,5 @@
+"""Données fixes utilisées par le bouton « Graphe de test »."""
+
 DENSITES_TEST = {
     "Aucun": 0,
     "Faible": 5,

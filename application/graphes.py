@@ -1,13 +1,15 @@
 import json # On importe json pour simplement tester les graphes, pour avoir un format plus lisible
 
 class Graphes:
-    """Classe maitresse, elle permet d'initialiser un graphe"""
+    """Représente les nœuds, les routes et les phases de feux du réseau.
+
+    ``noeuds`` contient les noms des nœuds. Lorsqu'un feu est défini, son
+    entrée contient aussi ses phases et l'index de la phase active.
+    ``aretes`` est un dictionnaire de voisins et de poids. Chaque route est
+    enregistrée dans les deux sens.
+    """
     def __init__(self):
-        """
-        Ce constructeur va créer deux dictionnaires vides
-        le premier self.noeuds va serveur à ajouter les noeuds
-        le second self.aretes va servir à créer les liens entre les noeuds
-        """
+        """Initialise les dictionnaires de nœuds et de routes."""
         self.noeuds = {}
         self.aretes = {}
 
@@ -26,9 +28,10 @@ class Graphes:
         self.noeuds.update({noeud: noeud})
 
     def ajouter_arete(self, depart, arrivee, poids):
-        """Ajouter un lien entre deux noeud existant
-        - Si un des noeud donné n'existe pas, il sera demandé de les créer
-        - Si ils existent, alors l'opération pourra aboutir
+        """Ajoute une route bidirectionnelle entre deux nœuds existants.
+
+        ``poids`` sert au calcul de l'itinéraire. Retourne ``None`` si la route
+        est ajoutée, ou un message si un nœud est absent.
         """
         if depart not in self.noeuds:
             return f"le noeud {depart} n'existe pas, merci de le créer"
@@ -40,11 +43,13 @@ class Graphes:
             if arrivee not in self.aretes:
                 self.aretes[arrivee] = {}
 
+            # Une route relie les deux nœuds dans les deux sens avec le même poids.
             self.aretes[depart].update({arrivee: poids})
             self.aretes[arrivee].update({depart: poids})
         return None
 
     def renommer_noeud(self, ancien_nom, nouveau_nom):
+        """Renomme un nœud et met à jour les routes et phases de feux qui le citent."""
         if ancien_nom not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
         if nouveau_nom in self.noeuds:
@@ -68,6 +73,7 @@ class Graphes:
                             phase[index] = nouveau_nom
 
     def supprimer_noeud(self, nom):
+        """Supprime un nœud et nettoie ses routes ainsi que les phases des feux."""
         if nom not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
 
@@ -90,11 +96,13 @@ class Graphes:
                         phase.remove(nom)
 
     def definir_feu(self, noeud, phases):
+        """Associe au nœud des groupes de voies et active la première phase."""
         if noeud not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
         self.noeuds[noeud] = {"phases": phases, "phase_active": 0}
 
     def est_vert(self, noeud, venant_de):
+        """Indique si la phase active autorise l'entrée depuis ``venant_de``."""
         if noeud not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
         if not isinstance(self.noeuds[noeud], dict):
@@ -104,6 +112,7 @@ class Graphes:
         return venant_de in directions_autorises
 
     def changer_phase(self, noeud, nouvelle_phase):
+        """Change l'index de phase active d'un nœud équipé d'un feu."""
         if noeud not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
         if not isinstance(self.noeuds[noeud], dict):

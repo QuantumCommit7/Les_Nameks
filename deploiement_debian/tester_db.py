@@ -1,3 +1,5 @@
+"""Vérifie en lecture seule les paramètres .env et une connexion à MariaDB."""
+
 from pathlib import Path
 
 
