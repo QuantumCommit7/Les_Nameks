@@ -1,5 +1,7 @@
 """Données fixes utilisées par le bouton « Graphe de test »."""
 
+# Nombre de véhicules maintenus en permanence sur le réseau selon la densité.
+# Quand un véhicule arrive, un autre est créé pour garder ce nombre.
 DENSITES_TEST = {
     "Aucun": 0,
     "Faible": 5,
@@ -7,6 +9,8 @@ DENSITES_TEST = {
     "Fort": 20
 }
 
+# Position (x, y) de chaque nœud dans la scène, en pixels.
+# L'axe y descend vers le bas, comme toujours en Qt.
 NOEUDS_TEST = {
     "A": (80, 90),
     "B": (220, 60),
@@ -36,6 +40,8 @@ NOEUDS_TEST = {
     "Z": (910, 380)
 }
 
+# Routes : (nœud 1, nœud 2, poids). Le poids est le « coût » utilisé par
+# Dijkstra ; il n'a pas de lien avec la longueur dessinée à l'écran.
 ARETES_TEST = [
     ("A", "B", 5),
     ("A", "F", 6),
@@ -85,4 +91,6 @@ ARETES_TEST = [
     ("T", "Z", 4)
 ]
 
+# Carrefours équipés d'un feu. Chacun a exactement 4 routes, condition
+# imposée par FenetrePrincipale.trouver_groupes().
 FEUX_TEST = ["F", "G", "H", "L", "M", "N", "O"]

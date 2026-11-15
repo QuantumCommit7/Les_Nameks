@@ -7,6 +7,15 @@ class Graphes:
     entrée contient aussi ses phases et l'index de la phase active.
     ``aretes`` est un dictionnaire de voisins et de poids. Chaque route est
     enregistrée dans les deux sens.
+
+    Exemple après quelques ajouts :
+        noeuds = {"A": "A", "B": {"phases": [["A", "C"], ["D", "E"]], "phase_active": 0}}
+        aretes = {"A": {"B": 5}, "B": {"A": 5}}
+    Ici, A est un nœud simple et B un carrefour avec feu. Les voitures venant
+    de A ou de C ont le vert en B (phase 0), celles venant de D ou E ont le rouge.
+
+    Cette classe ne dessine rien : c'est le « modèle » du réseau, interrogé
+    par la scène graphique et par les véhicules.
     """
     def __init__(self):
         """Initialise les dictionnaires de nœuds et de routes."""
@@ -38,6 +47,7 @@ class Graphes:
         elif arrivee not in self.noeuds:
             return f"le noeud {arrivee} n'existe pas, merci de le créer"
         else:
+            # Créer le dictionnaire de voisins s'il n'existe pas encore.
             if depart not in self.aretes:
                 self.aretes[depart] = {}
             if arrivee not in self.aretes:
@@ -55,15 +65,19 @@ class Graphes:
         if nouveau_nom in self.noeuds:
             raise ValueError("Ce noeud existe déjà")
 
+        # 1. Le nœud lui-même (pop retire l'ancienne clé et renvoie sa valeur).
         self.noeuds[nouveau_nom] = self.noeuds.pop(ancien_nom)
 
+        # 2. Ses propres routes.
         if ancien_nom in self.aretes:
             self.aretes[nouveau_nom] = self.aretes.pop(ancien_nom)
 
+        # 3. Les routes des voisins qui pointaient vers l'ancien nom.
         for depart in self.aretes:
             if ancien_nom in self.aretes[depart]:
                 self.aretes[depart][nouveau_nom] = self.aretes[depart].pop(ancien_nom)
 
+        # 4. Les phases des feux qui citaient l'ancien nom.
         for noeud in self.noeuds:
             if isinstance(self.noeuds[noeud], dict):
                 phases = self.noeuds[noeud]["phases"]
@@ -82,12 +96,15 @@ class Graphes:
         if nom in self.aretes:
             del self.aretes[nom]
 
+        # list(...) fait une copie des clés : on peut ainsi supprimer des
+        # entrées du dictionnaire pendant qu'on le parcourt.
         for depart in list(self.aretes.keys()):
             if nom in self.aretes[depart]:
                 del self.aretes[depart][nom]
             if self.aretes[depart] == {}:
                 del self.aretes[depart]
 
+        # Retirer le nœud supprimé des phases des feux voisins.
         for noeud in self.noeuds:
             if isinstance(self.noeuds[noeud], dict):
                 phases = self.noeuds[noeud]["phases"]
@@ -99,12 +116,15 @@ class Graphes:
         """Associe au nœud des groupes de voies et active la première phase."""
         if noeud not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
+        # La valeur du nœud devient un dictionnaire : c'est ce qui indique,
+        # partout dans le code, qu'il possède un feu (test isinstance(..., dict)).
         self.noeuds[noeud] = {"phases": phases, "phase_active": 0}
 
     def est_vert(self, noeud, venant_de):
         """Indique si la phase active autorise l'entrée depuis ``venant_de``."""
         if noeud not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
+        # Un nœud sans feu laisse toujours passer.
         if not isinstance(self.noeuds[noeud], dict):
             return True
         phase_active = self.noeuds[noeud]["phase_active"]
@@ -120,7 +140,8 @@ class Graphes:
         if nouvelle_phase < 0 or nouvelle_phase >= len(self.noeuds[noeud]["phases"]):
             raise ValueError("le nouvelle_phase n'est pas 0 ou 1")
         self.noeuds[noeud]["phase_active"] = nouvelle_phase
-        
+
+# Petit test manuel : ce bloc ne s'exécute que si on lance graphes.py directement.
 if __name__ == "__main__":
     test = Graphes() # on crée une instance de Graphes affectée à une variable test
     test.ajouter_noeud('A') # ajout de 'A'

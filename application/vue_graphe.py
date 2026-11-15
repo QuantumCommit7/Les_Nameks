@@ -2,14 +2,21 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import QGraphicsView
 
+# Rappel Qt : la QGraphicsScene contient les objets (cercles, lignes, voitures)
+# et la QGraphicsView est la « caméra » qui regarde la scène. Zoomer ou se
+# déplacer ne modifie que la vue : les coordonnées des objets ne changent pas.
+
 class VueGraphe(QGraphicsView):
     """Vue de la scène avec zoom à la molette et déplacement à la souris."""
 
     def __init__(self, scene):
         super().__init__(scene)
+        # Lissage des bords des formes.
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Le zoom se fait autour du curseur de la souris.
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        # Les barres de défilement existent mais sont cachées : on se déplace à la souris.
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSceneRect(-200000, -200000, 400000, 400000)   # scène « infinie » pour pouvoir se déplacer
@@ -18,9 +25,11 @@ class VueGraphe(QGraphicsView):
         self.deja_centree = False
 
     def showEvent(self, event):
+        """Centre la vue une seule fois, au premier affichage de la fenêtre."""
         super().showEvent(event)
         if not self.deja_centree:
             self.deja_centree = True
+            # singleShot(0, ...) attend que la fenêtre ait sa taille définitive.
             QTimer.singleShot(0, lambda: self.centerOn(450, 300))
 
     def ajuster_au_graphe(self):
@@ -29,6 +38,7 @@ class VueGraphe(QGraphicsView):
         if rectangle.isNull():
             return
 
+        # Petite marge de 4 % autour du graphe.
         marge = max(rectangle.width(), rectangle.height()) * 0.04
         rectangle.adjust(-marge, -marge, marge, marge)
         self.fitInView(rectangle, Qt.AspectRatioMode.KeepAspectRatio)
@@ -40,6 +50,7 @@ class VueGraphe(QGraphicsView):
             return
         # Chaque cran de molette multiplie l'échelle par 1,25 (ou son inverse).
         facteur = 1.25 ** (delta / 120)
+        # m11() est l'échelle horizontale actuelle de la vue.
         nouvelle_echelle = self.transform().m11() * facteur
         if 0.25 <= nouvelle_echelle <= 8:
             self.scale(facteur, facteur)
@@ -59,12 +70,14 @@ class VueGraphe(QGraphicsView):
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             event.accept()
             return
+        # Sinon on laisse Qt transmettre le clic à la scène (SceneGraphe).
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         """Déplace les barres de défilement pendant un glisser-déplacer."""
         if self.deplacement_en_cours:
             point = event.position().toPoint()
+            # delta = déplacement de la souris depuis le dernier événement.
             delta = point - self.dernier_point
             self.dernier_point = point
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
@@ -81,4 +94,3 @@ class VueGraphe(QGraphicsView):
             event.accept()
             return
         super().mouseReleaseEvent(event)
-

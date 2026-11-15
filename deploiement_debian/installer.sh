@@ -45,4 +45,4 @@ else
     exit 1
 fi
 
-echo "Étapes suivantes : depuis ce dossier, exécute 'sudo mariadb < init_db.sql', puis suis README.md pour créer le compte trafic et configurer .env."
+echo "Étapes suivantes : depuis ce dossier, exécute 'sudo mariadb < init_db.sql' puis 'sudo mariadb < migration_stats.sql', puis suis README.md (sections 4 et 5) pour créer le compte trafic et configurer .env."
