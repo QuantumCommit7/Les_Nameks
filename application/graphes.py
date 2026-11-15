@@ -1,159 +1,110 @@
-import json # On importe json pour simplement tester les graphes, pour avoir un format plus lisible
-
 class Graphes:
-    """Représente les nœuds, les routes et les phases de feux du réseau.
+    """Le réseau routier : nœuds, routes et feux. Cette classe ne dessine rien.
 
-    ``noeuds`` contient les noms des nœuds. Lorsqu'un feu est défini, son
-    entrée contient aussi ses phases et l'index de la phase active.
-    ``aretes`` est un dictionnaire de voisins et de poids. Chaque route est
-    enregistrée dans les deux sens.
-
-    Exemple après quelques ajouts :
+    Exemple :
         noeuds = {"A": "A", "B": {"phases": [["A", "C"], ["D", "E"]], "phase_active": 0}}
         aretes = {"A": {"B": 5}, "B": {"A": 5}}
-    Ici, A est un nœud simple et B un carrefour avec feu. Les voitures venant
-    de A ou de C ont le vert en B (phase 0), celles venant de D ou E ont le rouge.
-
-    Cette classe ne dessine rien : c'est le « modèle » du réseau, interrogé
-    par la scène graphique et par les véhicules.
+    A est un nœud simple. B est un carrefour avec feu : en phase 0, les voitures
+    venant de A ou C ont le vert, celles venant de D ou E ont le rouge.
+    Chaque route est enregistrée dans les deux sens, avec son poids.
     """
+
     def __init__(self):
-        """Initialise les dictionnaires de nœuds et de routes."""
         self.noeuds = {}
         self.aretes = {}
 
-    def ajouter_noeud(self, noeud : str):
-        """
-        Cette methode va servir à créer un noeud dans notre instance de Graphes
-        l'argument noeud doit être de type string, si le type est différent une erreur sera renvoyée
-        Une seconde vérification aura lieu, elle vérifiera que le noeud donné n'existe pas déjà.
-        Une fois toutes les vérifications passées, on update le dictionnaire pour ajouter une nouvelle entrée,
-        qui aura comme valeur l'argument noeud.
-        """
+    def a_un_feu(self, noeud):
+        # Un nœud avec feu a pour valeur un dictionnaire (voir definir_feu).
+        return isinstance(self.noeuds[noeud], dict)
+
+    def ajouter_noeud(self, noeud):
         if not isinstance(noeud, str):
             raise TypeError("Votre noeud n'est pas un string")
         if noeud in self.noeuds:
             raise ValueError("Ce noeud existe déjà")
-        self.noeuds.update({noeud: noeud})
+        self.noeuds[noeud] = noeud
 
     def ajouter_arete(self, depart, arrivee, poids):
-        """Ajoute une route bidirectionnelle entre deux nœuds existants.
+        """Ajoute une route à double sens entre deux nœuds existants."""
+        if depart not in self.noeuds or arrivee not in self.noeuds:
+            raise ValueError("les deux nœuds doivent exister")
+        # setdefault crée le dictionnaire des voisins s'il n'existe pas encore.
+        self.aretes.setdefault(depart, {})[arrivee] = poids
+        self.aretes.setdefault(arrivee, {})[depart] = poids
 
-        ``poids`` sert au calcul de l'itinéraire. Retourne ``None`` si la route
-        est ajoutée, ou un message si un nœud est absent.
-        """
-        if depart not in self.noeuds:
-            return f"le noeud {depart} n'existe pas, merci de le créer"
-        elif arrivee not in self.noeuds:
-            return f"le noeud {arrivee} n'existe pas, merci de le créer"
-        else:
-            # Créer le dictionnaire de voisins s'il n'existe pas encore.
-            if depart not in self.aretes:
-                self.aretes[depart] = {}
-            if arrivee not in self.aretes:
-                self.aretes[arrivee] = {}
-
-            # Une route relie les deux nœuds dans les deux sens avec le même poids.
-            self.aretes[depart].update({arrivee: poids})
-            self.aretes[arrivee].update({depart: poids})
-        return None
-
-    def renommer_noeud(self, ancien_nom, nouveau_nom):
-        """Renomme un nœud et met à jour les routes et phases de feux qui le citent."""
-        if ancien_nom not in self.noeuds:
+    def renommer_noeud(self, ancien, nouveau):
+        """Renomme un nœud partout : nœuds, routes et phases des feux."""
+        if ancien not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
-        if nouveau_nom in self.noeuds:
+        if nouveau in self.noeuds:
             raise ValueError("Ce noeud existe déjà")
 
-        # 1. Le nœud lui-même (pop retire l'ancienne clé et renvoie sa valeur).
-        self.noeuds[nouveau_nom] = self.noeuds.pop(ancien_nom)
-
-        # 2. Ses propres routes.
-        if ancien_nom in self.aretes:
-            self.aretes[nouveau_nom] = self.aretes.pop(ancien_nom)
-
-        # 3. Les routes des voisins qui pointaient vers l'ancien nom.
-        for depart in self.aretes:
-            if ancien_nom in self.aretes[depart]:
-                self.aretes[depart][nouveau_nom] = self.aretes[depart].pop(ancien_nom)
-
-        # 4. Les phases des feux qui citaient l'ancien nom.
-        for noeud in self.noeuds:
-            if isinstance(self.noeuds[noeud], dict):
-                phases = self.noeuds[noeud]["phases"]
-                for phase in phases:
-                    for index, voisin in enumerate(phase):
-                        if voisin == ancien_nom:
-                            phase[index] = nouveau_nom
+        # pop retire l'ancienne clé et renvoie sa valeur (le feu éventuel est conservé).
+        self.noeuds[nouveau] = self.noeuds.pop(ancien)
+        if not self.a_un_feu(nouveau):
+            self.noeuds[nouveau] = nouveau
+        if ancien in self.aretes:
+            self.aretes[nouveau] = self.aretes.pop(ancien)
+        for voisins in self.aretes.values():
+            if ancien in voisins:
+                voisins[nouveau] = voisins.pop(ancien)
+        for phase in self.toutes_les_phases():
+            for i, voisin in enumerate(phase):
+                if voisin == ancien:
+                    phase[i] = nouveau
 
     def supprimer_noeud(self, nom):
-        """Supprime un nœud et nettoie ses routes ainsi que les phases des feux."""
+        """Supprime un nœud, ses routes, et le retire des phases des feux."""
         if nom not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
-
         del self.noeuds[nom]
+        self.aretes.pop(nom, None)
+        # list(...) : on copie les clés pour pouvoir supprimer pendant le parcours.
+        for noeud in list(self.aretes):
+            self.aretes[noeud].pop(nom, None)
+            if not self.aretes[noeud]:
+                del self.aretes[noeud]
+        for phase in self.toutes_les_phases():
+            while nom in phase:
+                phase.remove(nom)
 
-        if nom in self.aretes:
-            del self.aretes[nom]
-
-        # list(...) fait une copie des clés : on peut ainsi supprimer des
-        # entrées du dictionnaire pendant qu'on le parcourt.
-        for depart in list(self.aretes.keys()):
-            if nom in self.aretes[depart]:
-                del self.aretes[depart][nom]
-            if self.aretes[depart] == {}:
-                del self.aretes[depart]
-
-        # Retirer le nœud supprimé des phases des feux voisins.
+    def toutes_les_phases(self):
+        """Liste de toutes les phases de tous les feux."""
+        phases = []
         for noeud in self.noeuds:
-            if isinstance(self.noeuds[noeud], dict):
-                phases = self.noeuds[noeud]["phases"]
-                for phase in phases:
-                    while nom in phase:
-                        phase.remove(nom)
+            if self.a_un_feu(noeud):
+                phases.extend(self.noeuds[noeud]["phases"])
+        return phases
 
     def definir_feu(self, noeud, phases):
-        """Associe au nœud des groupes de voies et active la première phase."""
+        """Installe un feu : phases = [[voisins verts en phase 0], [en phase 1]]."""
         if noeud not in self.noeuds:
             raise ValueError("le noeud n'existe pas")
-        # La valeur du nœud devient un dictionnaire : c'est ce qui indique,
-        # partout dans le code, qu'il possède un feu (test isinstance(..., dict)).
         self.noeuds[noeud] = {"phases": phases, "phase_active": 0}
 
     def est_vert(self, noeud, venant_de):
-        """Indique si la phase active autorise l'entrée depuis ``venant_de``."""
-        if noeud not in self.noeuds:
-            raise ValueError("le noeud n'existe pas")
-        # Un nœud sans feu laisse toujours passer.
-        if not isinstance(self.noeuds[noeud], dict):
-            return True
-        phase_active = self.noeuds[noeud]["phase_active"]
-        directions_autorises = self.noeuds[noeud]["phases"][phase_active]
-        return venant_de in directions_autorises
+        """Une voiture venant de `venant_de` peut-elle traverser `noeud` ?"""
+        if not self.a_un_feu(noeud):
+            return True  # pas de feu : on passe toujours
+        feu = self.noeuds[noeud]
+        return venant_de in feu["phases"][feu["phase_active"]]
 
     def changer_phase(self, noeud, nouvelle_phase):
-        """Change l'index de phase active d'un nœud équipé d'un feu."""
-        if noeud not in self.noeuds:
-            raise ValueError("le noeud n'existe pas")
-        if not isinstance(self.noeuds[noeud], dict):
+        if not self.a_un_feu(noeud):
             raise TypeError(f"le noeud {noeud} n'a pas de feu configuré")
-        if nouvelle_phase < 0 or nouvelle_phase >= len(self.noeuds[noeud]["phases"]):
-            raise ValueError("le nouvelle_phase n'est pas 0 ou 1")
         self.noeuds[noeud]["phase_active"] = nouvelle_phase
+
 
 # Petit test manuel : ce bloc ne s'exécute que si on lance graphes.py directement.
 if __name__ == "__main__":
-    test = Graphes() # on crée une instance de Graphes affectée à une variable test
-    test.ajouter_noeud('A') # ajout de 'A'
-    test.ajouter_noeud('B') # ajout de 'B'
-    test.ajouter_noeud('C') # ajout de 'C'
-    test.ajouter_arete('A', 'B', 15) # on crée un lien entre A et B avec un poid de 15
-    test.ajouter_arete('B', 'C', 7) # on crée un lien entre B et C avec un poid de 7
-    test.ajouter_arete('C', 'A', 5) # on crée un lien entre C et A avec un poid de 5
-    test.definir_feu('A', [['B'], ['C']])
-    print(test.est_vert('A', 'B'))
-    print(test.est_vert('A', 'C'))
-    test.changer_phase('A', 1)
-    print(test.noeuds['A'])
-    print(json.dumps(test.noeuds, indent=4)) # librairie json afin de lire avec plus de facilité le gros dictionnaire de dictionnaires
-    print(json.dumps(test.aretes, indent=4))
+    test = Graphes()
+    for nom in "ABC":
+        test.ajouter_noeud(nom)
+    test.ajouter_arete("A", "B", 15)
+    test.ajouter_arete("B", "C", 7)
+    test.ajouter_arete("C", "A", 5)
+    test.definir_feu("A", [["B"], ["C"]])
+    print(test.est_vert("A", "B"), test.est_vert("A", "C"))  # True False
+    test.changer_phase("A", 1)
+    print(test.noeuds)
+    print(test.aretes)

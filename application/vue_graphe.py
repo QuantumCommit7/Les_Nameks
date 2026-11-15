@@ -1,96 +1,65 @@
+"""La « caméra » qui regarde la scène : zoom à la molette et déplacement à la souris.
+
+Zoomer ou se déplacer ne change que la vue : les objets de la scène ne bougent pas.
+"""
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter
 from PyQt6.QtWidgets import QGraphicsView
 
-# Rappel Qt : la QGraphicsScene contient les objets (cercles, lignes, voitures)
-# et la QGraphicsView est la « caméra » qui regarde la scène. Zoomer ou se
-# déplacer ne modifie que la vue : les coordonnées des objets ne changent pas.
 
 class VueGraphe(QGraphicsView):
-    """Vue de la scène avec zoom à la molette et déplacement à la souris."""
 
     def __init__(self, scene):
         super().__init__(scene)
-        # Lissage des bords des formes.
-        self.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # Le zoom se fait autour du curseur de la souris.
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
-        # Les barres de défilement existent mais sont cachées : on se déplace à la souris.
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)  # bords lissés
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)  # zoom autour de la souris
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)  # garde le centre si on redimensionne
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setSceneRect(-200000, -200000, 400000, 400000)   # scène « infinie » pour pouvoir se déplacer
-        self.deplacement_en_cours = False
-        self.dernier_point = None
-        self.deja_centree = False
-
-    def showEvent(self, event):
-        """Centre la vue une seule fois, au premier affichage de la fenêtre."""
-        super().showEvent(event)
-        if not self.deja_centree:
-            self.deja_centree = True
-            # singleShot(0, ...) attend que la fenêtre ait sa taille définitive.
-            QTimer.singleShot(0, lambda: self.centerOn(450, 300))
+        self.setSceneRect(-200000, -200000, 400000, 400000)  # scène « infinie » pour se déplacer
+        self.dernier_point = None  # position de la souris pendant un déplacement
+        # Centrer la vue dès que la fenêtre a sa taille définitive.
+        QTimer.singleShot(0, lambda: self.centerOn(450, 300))
 
     def ajuster_au_graphe(self):
-        """Centre et ajuste la vue pour faire tenir les éléments du graphe."""
+        """Zoome pour faire tenir tout le graphe dans la vue, avec une petite marge."""
         rectangle = self.scene().itemsBoundingRect()
         if rectangle.isNull():
             return
-
-        # Petite marge de 4 % autour du graphe.
         marge = max(rectangle.width(), rectangle.height()) * 0.04
         rectangle.adjust(-marge, -marge, marge, marge)
         self.fitInView(rectangle, Qt.AspectRatioMode.KeepAspectRatio)
 
     def wheelEvent(self, event):
-        """Zoome autour du curseur, en gardant une échelle lisible."""
-        delta = event.angleDelta().y()
-        if delta == 0:
-            return
-        # Chaque cran de molette multiplie l'échelle par 1,25 (ou son inverse).
-        facteur = 1.25 ** (delta / 120)
-        # m11() est l'échelle horizontale actuelle de la vue.
-        nouvelle_echelle = self.transform().m11() * facteur
-        if 0.25 <= nouvelle_echelle <= 8:
+        # Chaque cran de molette multiplie l'échelle par 1,25 (ou la divise).
+        facteur = 1.25 ** (event.angleDelta().y() / 120)
+        if 0.25 <= self.transform().m11() * facteur <= 8:  # m11() = échelle actuelle
             self.scale(facteur, facteur)
 
     def mousePressEvent(self, event):
-        """Démarre un déplacement avec le bouton du milieu ou le clic droit dans le vide."""
+        """Clic du milieu, ou clic droit dans le vide : on commence à déplacer la vue."""
         bouton = event.button()
-        deplacer = bouton == Qt.MouseButton.MiddleButton
-
-        if bouton == Qt.MouseButton.RightButton:
-            item = self.itemAt(event.position().toPoint())
-            deplacer = item is None or item not in self.scene().cercles   # sur un nœud : menu normal
-
-        if deplacer:
-            self.deplacement_en_cours = True
+        sur_un_noeud = self.itemAt(event.position().toPoint()) in self.scene().cercles
+        if bouton == Qt.MouseButton.MiddleButton or (bouton == Qt.MouseButton.RightButton and not sur_un_noeud):
             self.dernier_point = event.position().toPoint()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-            return
-        # Sinon on laisse Qt transmettre le clic à la scène (SceneGraphe).
-        super().mousePressEvent(event)
+        else:
+            super().mousePressEvent(event)  # sinon, le clic est transmis à la scène
 
     def mouseMoveEvent(self, event):
-        """Déplace les barres de défilement pendant un glisser-déplacer."""
-        if self.deplacement_en_cours:
-            point = event.position().toPoint()
-            # delta = déplacement de la souris depuis le dernier événement.
-            delta = point - self.dernier_point
-            self.dernier_point = point
-            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
-            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
-            event.accept()
+        if self.dernier_point is None:
+            super().mouseMoveEvent(event)
             return
-        super().mouseMoveEvent(event)
+        point = event.position().toPoint()
+        delta = point - self.dernier_point  # déplacement de la souris
+        self.dernier_point = point
+        self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+        self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
 
     def mouseReleaseEvent(self, event):
-        """Termine le déplacement de la vue et restaure le curseur normal."""
-        if self.deplacement_en_cours and event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.RightButton):
-            self.deplacement_en_cours = False
-            self.unsetCursor()
-            event.accept()
+        if self.dernier_point is None:
+            super().mouseReleaseEvent(event)
             return
-        super().mouseReleaseEvent(event)
+        self.dernier_point = None
+        self.unsetCursor()

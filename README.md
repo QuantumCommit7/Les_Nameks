@@ -63,11 +63,7 @@ Utilisateur → FenetrePrincipale
 
 Le temps moyen est calculé à partir des trajets terminés et du temps de simulation active. Le relevé envoyé possède un champ `type` et six mesures. Le verrou empêche le démarrage d'un nouvel envoi si le précédent est encore actif ; le thread d'envoi évite de bloquer l'interface.
 
-### Fichiers de démonstration
-
-- `application/setting_circuit.py` et `application/simulation.py` forment une ancienne démonstration textuelle indépendante de l'interface. `simulation.py` démarre une boucle dès son exécution ; le lancement principal reste `application/interface.py`.
-- `scrpte1.py`, à la racine, est vide. Il ne participe pas au lancement.
-- `.venv/`, `__pycache__/` et les fichiers `.pyc` sont des éléments générés et ne sont pas nécessaires dans le ZIP.
+`.venv/`, `__pycache__/` et les fichiers `.pyc` sont des éléments générés automatiquement : ils ne sont pas nécessaires dans le ZIP.
 
 ---
 
@@ -119,21 +115,22 @@ Tant que le serveur Debian n'est pas installé, le terminal affiche toutes les 5
 | Action | Comment faire |
 | --- | --- |
 | Charger le réseau de démonstration | Choisir une densité (Aucun, Faible, Moyen, Fort), puis **Graphe de test**. |
+| Tout effacer | **Réinitialiser (tout effacer)** : arrête la simulation et vide le tableau (nœuds, routes, feux, véhicules). |
 | Lancer / suspendre | **Démarrer** / **Pause**. La simulation démarre toujours en pause. |
 | Zoomer / se déplacer | Molette pour zoomer ; clic du milieu, ou clic droit dans le vide, maintenu pour déplacer la vue. |
 | Ajouter un nœud | **Ajouter un nœud**, puis clic gauche dans une zone vide, puis saisir un nom. |
-| Créer une route | Clic gauche sur un premier nœud, puis sur un second, puis saisir un poids strictement positif. |
+| Créer une route | Clic gauche sur un premier nœud, puis sur un second, puis saisir la distance et choisir son unité (**m** ou **km**). La distance est enregistrée en mètres et sert à Dijkstra pour trouver le chemin le plus court ; elle s'affiche en km au-delà de 1 000 m. |
 | Déplacer un nœud | Clic gauche maintenu sur le nœud, puis glisser. |
-| Renommer / supprimer un nœud | Clic droit sur le nœud. Possible uniquement s'il n'y a aucun véhicule : recréez le **Graphe de test** avec la densité **Aucun** pour éditer librement. |
+| Renommer / supprimer un nœud | Clic droit sur le nœud. Possible uniquement s'il n'y a aucun véhicule : recréez le **Graphe de test** avec la densité **Aucun**, ou partez d'un tableau vide avec **Réinitialiser**. |
 | Ajouter un feu | **Ajouter un feu**, puis choisir un carrefour qui a **exactement 4 routes**. |
-| Créer un véhicule | **Créer véhicule**, puis choisir départ, destination, vitesse (0,01 à 1) et type (Normal ou Prioritaire). |
+| Créer un véhicule | **Créer véhicule**, puis choisir départ, destination et type (Normal ou Prioritaire). La vitesse suit le code de la route : tous les véhicules normaux roulent à la même vitesse limite, les prioritaires plus vite, et les véhicules se rangent sur le côté pour les laisser passer. |
 | Voir le trajet d'un véhicule | Clic gauche sur le véhicule : son chemin Dijkstra s'affiche en orange. Second clic pour l'effacer. |
 
 ## Étape 3 — Installer le serveur (Debian)
 
 Toute la partie Debian est décrite dans **[`deploiement_debian/README.md`](deploiement_debian/README.md)**. Suivez ce guide **de la section 0 à la section 8, dans l'ordre**, puis revenez ici.
 
-Ne lancez pas le serveur avant d'avoir créé le compte MariaDB et le fichier `.env` (sections 4 et 5 du guide) : sans eux, le serveur démarre, mais chaque relevé reçu provoque une erreur MariaDB.
+Ne lancez pas le serveur avant d'avoir créé le compte MariaDB et le fichier `.env` (sections 4 et 5 du guide) : sans `.env`, le serveur refuse de démarrer et affiche `Configuration MariaDB impossible à lire`.
 
 **Liste de contrôle à la fin du guide Debian :**
 
@@ -214,7 +211,7 @@ Les graphes ne sont pas enregistrés sur disque. Le client n'a pas de file de re
 | Fichier introuvable au lancement | PowerShell n'est pas à la racine du projet. | `cd C:\Les_Nameks` puis relancer ; vérifier que `dir` montre `application` et `reseau`. |
 | `Envoi des statistiques impossible : timed out` | Serveur injoignable : serveur arrêté, mauvaise adresse, mode NAT ou pare-feu. | Normal sans serveur. Sinon, refaire l'étape 4 et `Test-NetConnection`. |
 | `Connection refused` | La VM est joignable mais le serveur n'écoute pas sur le port 5000. | Sur Debian : relancer le serveur (section 8 du guide), vérifier avec `sudo ss -ltnp \| grep ':5000'`. |
-| Le serveur affiche `Erreur MariaDB (FileNotFoundError…)` | Le fichier `deploiement_debian/.env` n'existe pas. | Guide Debian, section 5. |
+| Le serveur affiche `Configuration MariaDB impossible à lire` | Le fichier `deploiement_debian/.env` n'existe pas ou est incomplet. | Guide Debian, section 5. |
 | Le serveur affiche une autre `Erreur MariaDB` | Compte, mot de passe, table ou colonnes incorrects. | Guide Debian, sections 3 à 6 et tableau de dépannage. |
 | Aucune ligne, interface fonctionne | Simulation en pause, réseau inaccessible ou erreur SQL serveur. | Laisser tourner plus de cinq secondes, lire les terminaux Windows et Debian, refaire la requête de l'étape 6. |
 | Impossible de renommer ou supprimer un nœud | Des véhicules sont présents (protection volontaire). | Recréer le **Graphe de test** avec la densité **Aucun**. |
