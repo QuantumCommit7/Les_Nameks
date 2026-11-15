@@ -1,574 +1,326 @@
+"""Dessin du réseau et gestion de la souris (nœuds, routes, feux)."""
+
 import math
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import QGraphicsScene, QInputDialog, QMessageBox, QMenu
 
-from graphes import Graphes
+RAYON_NOEUD = 15
+DECALAGE_VOIES = 8  # écart en pixels entre l'axe de la route et chaque voie
+# Couleur des textes. Sans elle, Qt utilise la couleur du thème Windows
+# (blanc en thème sombre), illisible sur le fond clair.
+COULEUR_TEXTE = QColor("#263238")
+
+
+def decalage_perpendiculaire(x1, y1, x2, y2):
+    """Petit vecteur perpendiculaire à la route, pour placer les deux voies.
+
+    (-dy, dx) est perpendiculaire à (dx, dy). On le divise par la longueur
+    pour que l'écart soit le même sur toutes les routes.
+    """
+    dx, dy = x2 - x1, y2 - y1
+    longueur = math.hypot(dx, dy)
+    if longueur == 0:
+        return 0, 0
+    return -dy / longueur * DECALAGE_VOIES, dx / longueur * DECALAGE_VOIES
+
+
+def formater_distance(metres):
+    """Texte affiché sur une route : 500 -> "500 m", 1200 -> "1,2 km".
+
+    Les distances sont toujours enregistrées en mètres ; au-delà de 1 000 m,
+    on les affiche en kilomètres pour qu'elles restent faciles à lire.
+    """
+    if metres >= 1000:
+        texte = f"{round(metres / 1000, 2):g} km"  # :g retire les zéros inutiles (1.50 -> 1.5)
+    else:
+        texte = f"{round(metres, 2):g} m"
+    return texte.replace(".", ",")  # virgule décimale à la française
+
+
+def cle_arete(a, b):
+    """A-B et B-A désignent la même route : clé ("A", "B") dans les deux cas."""
+    return tuple(sorted([a, b]))
+
 
 class SceneGraphe(QGraphicsScene):
-    """Gère les éléments graphiques et les interactions avec le graphe.
+    """Le modèle (self.graphe) contient les données ; la scène contient les dessins.
 
-    Le modèle (``self.graphe``) contient les données ; la scène contient les
-    objets dessinés. Les dictionnaires ci-dessous font le lien entre les deux.
+    Les dictionnaires ci-dessous font le lien entre les deux.
     """
 
-    def __init__(self, graphe: Graphes):
+    def __init__(self, graphe):
         super().__init__()
+        self.fenetre = None  # FenetrePrincipale, renseignée par interface.py
+        self.setBackgroundBrush(QBrush(QColor("#eef3f1")))
+        self.reinitialiser(graphe)
+
+    def reinitialiser(self, graphe):
+        """Efface tous les dessins et repart du graphe donné."""
+        self.clear()
         self.graphe = graphe
-        # Objet graphique (cercle ou texte) -> nom du nœud : sert à savoir
-        # sur quel nœud l'utilisateur a cliqué.
-        self.cercles = {}
-        # Nom du nœud -> {"cercle": ..., "texte": ...}
-        self.elements_noeuds = {}
-        # Nom du nœud -> (x, y) dans la scène.
-        self.positions = {}
-        # ("A", "B") trié -> [ligne voie 1, ligne voie 2]
-        self.lignes_aretes = {}
-        # ("A", "B") trié -> texte affichant le poids
-        self.textes_poids = {}
-        # Écart en pixels entre l'axe de la route et chaque voie.
-        self.decalage_voies = 8
-        # Premier nœud cliqué quand on crée une route en deux clics.
-        self.noeud_en_attente = None
-        # Carrefour -> {voisin: {"graphique": pastille, "groupe": 0 ou 1}}
-        self.feux = {}
+        self.positions = {}        # nom du nœud -> (x, y)
+        self.elements_noeuds = {}  # nom du nœud -> {"cercle": ..., "texte": ...}
+        self.cercles = {}          # objet dessiné -> nom du nœud (pour les clics)
+        self.lignes_aretes = {}    # ("A", "B") -> [voie 1, voie 2]
+        self.textes_poids = {}     # ("A", "B") -> texte du poids
+        self.feux = {}             # carrefour -> {voisin: {"graphique": pastille, "groupe": 0 ou 1}}
+        self.noeud_en_attente = None  # 1er nœud cliqué pour créer une route
         self.mode_ajout_noeud = False
         self.noeud_a_deplacer = None
         self.deplacement_en_cours = False
-        # Référence vers FenetrePrincipale, renseignée par interface.py.
-        self.fenetre = None
-        self.setBackgroundBrush(QBrush(QColor("#eef3f1")))
 
-    # ------------------------------------------------------------------
-    # Événements souris (appelés automatiquement par Qt)
-    # ------------------------------------------------------------------
+    def afficher_message(self, texte):
+        if self.fenetre is not None:
+            self.fenetre.statusBar().showMessage(texte, 3000)
+
+    # ---------------- Souris (méthodes appelées automatiquement par Qt) ----------------
 
     def mousePressEvent(self, event):
-        """Dirige le clic vers le menu, la sélection ou le déplacement d'un objet."""
         position = event.scenePos()
-        x = position.x()
-        y = position.y()
-
-        # Objet situé sous la souris (None si on clique dans le vide).
-        item_clique = self.itemAt(position, self.views()[0].transform())
+        item = self.itemAt(position, self.views()[0].transform())  # objet sous la souris
 
         # Clic droit sur un nœud : menu « Modifier le nom / Supprimer ».
-        if event.button() == Qt.MouseButton.RightButton:
-            if item_clique in self.cercles:
-                nom_clique = self.cercles[item_clique]
-                self.afficher_menu_noeud(nom_clique, event.screenPos())
-                return
-
+        if event.button() == Qt.MouseButton.RightButton and item in self.cercles:
+            self.afficher_menu_noeud(self.cercles[item], event.screenPos())
+            return
         if event.button() != Qt.MouseButton.LeftButton:
             return
 
-        # Clic gauche sur un véhicule (ou sur son gyrophare) : on le sélectionne.
-        if self.fenetre is not None:
+        # Clic sur un véhicule (ou sur son gyrophare) : on le sélectionne.
+        if self.fenetre is not None and item is not None:
             for vehicule in self.fenetre.vehicules:
-                if item_clique is not None and (
-                    item_clique == vehicule.graphique
-                    or vehicule.graphique.isAncestorOf(item_clique)
-                ):
+                if item == vehicule.graphique or vehicule.graphique.isAncestorOf(item):
                     self.fenetre.selectionner_vehicule(vehicule)
                     return
 
-        # Clic gauche sur un nœud : il peut s'agir d'un déplacement ou d'un
-        # simple clic. On ne le saura qu'au relâchement (mouseReleaseEvent).
-        if item_clique in self.cercles:
-            nom_clique = self.cercles[item_clique]
-            self.noeud_a_deplacer = nom_clique
+        # Clic sur un nœud : déplacement ou simple clic ? On le saura au relâchement.
+        if item in self.cercles:
+            self.noeud_a_deplacer = self.cercles[item]
             self.deplacement_en_cours = False
-            return
-
-        # Clic dans le vide après « Ajouter un nœud ».
-        if self.mode_ajout_noeud:
-            self.creer_noeud(x, y)
+        elif self.mode_ajout_noeud:
             self.mode_ajout_noeud = False
-
+            self.creer_noeud(position.x(), position.y())
 
     def mouseMoveEvent(self, event):
-        """Déplace le nœud sélectionné et recalcule ses routes."""
-        if self.noeud_a_deplacer is None:
-            return
-
-        position = event.scenePos()
-        # La souris a bougé : ce n'est plus un simple clic.
-        self.deplacement_en_cours = True
-
-        self.deplacer_noeud(
-            self.noeud_a_deplacer,
-            position.x(),
-            position.y()
-        )
+        if self.noeud_a_deplacer is not None:
+            self.deplacement_en_cours = True  # la souris a bougé : ce n'est plus un clic
+            self.deplacer_noeud(self.noeud_a_deplacer, event.scenePos().x(), event.scenePos().y())
 
     def mouseReleaseEvent(self, event):
-        """Interprète un clic simple sans le confondre avec un glissement."""
-        if event.button() != Qt.MouseButton.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton or self.noeud_a_deplacer is None:
             return
-
-        if self.noeud_a_deplacer is not None:
-            nom = self.noeud_a_deplacer
-            clic_simple = self.deplacement_en_cours == False
-
-            self.noeud_a_deplacer = None
-            self.deplacement_en_cours = False
-
-            if clic_simple:
-                self.gerer_clic_sur_noeud(nom)
+        nom = self.noeud_a_deplacer
+        clic_simple = not self.deplacement_en_cours
+        self.noeud_a_deplacer = None
+        if clic_simple:
+            self.gerer_clic_sur_noeud(nom)
 
     def gerer_clic_sur_noeud(self, nom):
-        """Utilise deux clics simples sur des nœuds pour créer une route."""
-        # Premier clic : on mémorise le nœud de départ.
+        """Deux clics sur deux nœuds = création d'une route entre eux."""
         if self.noeud_en_attente is None:
             self.noeud_en_attente = nom
-            print(f"{nom} sélectionné comme départ, cliquez sur le nœud d'arrivée")
-            if self.fenetre is not None:
-                self.fenetre.statusBar().showMessage("Sélectionnez le second nœud", 3000)
+            self.afficher_message("Sélectionnez le second nœud")
             return
 
-        # Second clic : on crée la route entre les deux nœuds.
-        depart = self.noeud_en_attente
-        arrivee = nom
-        self.noeud_en_attente = None
-
-        if depart == arrivee:
-            print("impossible de relier un nœud à lui-même")
+        depart, self.noeud_en_attente = self.noeud_en_attente, None
+        if depart == nom:
             return
-
-        poids, valide = QInputDialog.getDouble(
-            None,
-            "Poids de l'arête",
-            "Poids :"
-        )
-
-        if valide == False:
+        # Distance : valeur par défaut 1, minimum 0,01 (Dijkstra exige des poids positifs), 2 décimales.
+        distance, valide = QInputDialog.getDouble(None, "Longueur de la route", "Distance :", 1, 0.01, 1000000, 2)
+        if not valide:
             return
-
-        # Dijkstra ne fonctionne qu'avec des poids positifs.
-        if poids <= 0:
-            print("Impossible d'avoir une ponderation negative")
+        unite, valide = QInputDialog.getItem(None, "Unité", "Unité de la distance :", ["m", "km"], 0, False)
+        if not valide:
             return
+        # On enregistre toujours en mètres : Dijkstra compare ainsi des valeurs dans la même unité.
+        metres = distance * 1000 if unite == "km" else distance
+        self.graphe.ajouter_arete(depart, nom, metres)
+        self.dessiner_arete(depart, nom)
+        self.afficher_message("Route créée")
 
-        self.graphe.ajouter_arete(depart, arrivee, poids)
-        self.dessiner_arete(depart, arrivee)
-        if self.fenetre is not None:
-            self.fenetre.statusBar().showMessage("Route créée", 3000)
-        print(self.graphe.aretes)
-
-    # ------------------------------------------------------------------
-    # Outils de calcul
-    # ------------------------------------------------------------------
-
-    def cle_arete(self, depart, arrivee):
-        """Clé unique d'une route : A-B et B-A donnent toutes deux ("A", "B")."""
-        return tuple(sorted([depart, arrivee]))
-
-    def calculer_decalage_perpendiculaire(self, x1, y1, x2, y2):
-        """Calcule le décalage latéral qui sépare les deux voies d'une route.
-
-        Le vecteur perpendiculaire est normalisé pour que l'écart reste
-        constant quelle que soit la longueur de la route.
-        """
-        dx = x2 - x1
-        dy = y2 - y1
-
-        longueur = math.sqrt(dx * dx + dy * dy)
-
-        if longueur == 0:
-            return 0, 0
-
-        # (-dy, dx) est perpendiculaire à (dx, dy) ; diviser par la longueur
-        # donne un vecteur de longueur 1.
-        decalage_x = -dy / longueur
-        decalage_y = dx / longueur
-
-        return (
-            decalage_x * self.decalage_voies,
-            decalage_y * self.decalage_voies
-        )
-
-    # ------------------------------------------------------------------
-    # Édition des nœuds
-    # ------------------------------------------------------------------
+    # ---------------- Édition des nœuds ----------------
 
     def activer_ajout_noeud(self):
-        """Le prochain clic dans le vide créera un nœud."""
+        """Bouton « Ajouter un nœud » : le prochain clic dans le vide crée un nœud."""
         self.mode_ajout_noeud = True
         self.noeud_en_attente = None
-        print("Cliquez dans le vide pour placer le nouveau noeud")
-        if self.fenetre is not None:
-            self.fenetre.statusBar().showMessage("Cliquez dans le graphe pour placer un nœud", 3000)
+        self.afficher_message("Cliquez dans le graphe pour placer un nœud")
+
+    def creer_noeud(self, x, y):
+        nom, valide = QInputDialog.getText(None, "Nouveau nœud", "Nom du nœud :")
+        if not valide or nom == "" or nom in self.graphe.noeuds:
+            return
+        self.graphe.ajouter_noeud(nom)
+        self.dessiner_noeud(nom, x, y)
+        self.afficher_message("Nœud créé")
 
     def afficher_menu_noeud(self, nom, position):
-        """Affiche le menu contextuel d'un nœud et exécute l'action choisie."""
         menu = QMenu()
         action_modifier = menu.addAction("Modifier le nom")
         action_supprimer = menu.addAction("Supprimer")
-
-        # exec() bloque jusqu'au choix de l'utilisateur et renvoie l'action.
-        action = menu.exec(position)
-
+        action = menu.exec(position)  # attend le choix de l'utilisateur
         if action == action_modifier:
             self.modifier_nom_noeud(nom)
         elif action == action_supprimer:
             self.supprimer_noeud(nom)
 
-    def modifier_nom_noeud(self, ancien_nom):
-        """Renomme un nœud dans le modèle puis dans la scène."""
-        # Protection : les véhicules gardent des noms de nœuds dans leur chemin.
-        # Renommer pendant qu'ils roulent rendrait ces chemins invalides.
+    def vehicules_presents(self, action):
+        """Protection : les chemins des véhicules contiennent des noms de nœuds.
+
+        Renommer ou supprimer un nœud pendant qu'ils roulent casserait leurs chemins.
+        """
         if self.fenetre is not None and self.fenetre.vehicules:
-            QMessageBox.warning(
-                self.fenetre,
-                "Modification impossible",
-                "Retirez d'abord tous les véhicules avant de renommer un nœud."
-            )
+            QMessageBox.warning(self.fenetre, "Modification impossible",
+                                f"Retirez d'abord tous les véhicules avant de {action} un nœud.")
+            return True
+        return False
+
+    def modifier_nom_noeud(self, ancien):
+        if self.vehicules_presents("renommer"):
             return
-
-        nouveau_nom, valide = QInputDialog.getText(
-            None,
-            "Modifier le nom",
-            "Nouveau nom :",
-            text=ancien_nom
-        )
-
-        if valide == False:
+        nouveau, valide = QInputDialog.getText(None, "Modifier le nom", "Nouveau nom :", text=ancien)
+        if not valide or nouveau == "" or nouveau in self.graphe.noeuds:
             return
+        self.graphe.renommer_noeud(ancien, nouveau)
 
-        if nouveau_nom == "":
-            print("Aucun nom n'a été donné")
-            return
-        try:
-            self.graphe.renommer_noeud(ancien_nom, nouveau_nom)
-        except ValueError as erreur:
-            print(erreur)
-            return
-
-        # Mettre à jour les dictionnaires de la scène avec le nouveau nom.
-        self.positions[nouveau_nom] = self.positions.pop(ancien_nom)
-        self.elements_noeuds[nouveau_nom] = self.elements_noeuds.pop(ancien_nom)
-
-        cercle = self.elements_noeuds[nouveau_nom]["cercle"]
-        texte = self.elements_noeuds[nouveau_nom]["texte"]
-
-        x, y = self.positions[nouveau_nom]
-
-        self.cercles[cercle] = nouveau_nom
-        self.cercles[texte] = nouveau_nom
-        texte.setPlainText(nouveau_nom)
-        self.mettre_a_jour_position_noeud(nouveau_nom, x, y)
-
-        # Les clés des routes contiennent les noms : on redessine tout.
+        self.positions[nouveau] = self.positions.pop(ancien)
+        elements = self.elements_noeuds.pop(ancien)
+        self.elements_noeuds[nouveau] = elements
+        self.cercles[elements["cercle"]] = nouveau
+        self.cercles[elements["texte"]] = nouveau
+        elements["texte"].setPlainText(nouveau)
+        self.placer_noeud(nouveau)
         self.noeud_en_attente = None
-        self.redessiner_toutes_aretes()
-        self.mettre_a_jour_feux_graphique()
+        self.redessiner_routes_et_feux()
 
     def supprimer_noeud(self, nom):
-        """Supprime un nœud du modèle puis ses éléments graphiques."""
-        # Même protection que pour le renommage.
-        if self.fenetre is not None and self.fenetre.vehicules:
-            QMessageBox.warning(
-                self.fenetre,
-                "Modification impossible",
-                "Retirez d'abord tous les véhicules avant de supprimer un nœud."
-            )
+        if self.vehicules_presents("supprimer"):
             return
-
-        try:
-            self.graphe.supprimer_noeud(nom)
-        except ValueError as erreur:
-            print(erreur)
-            return
-
-        if nom == self.noeud_en_attente:
-            self.noeud_en_attente = None
-
+        self.graphe.supprimer_noeud(nom)
         elements = self.elements_noeuds.pop(nom)
-        self.removeItem(elements["cercle"])
-        self.removeItem(elements["texte"])
-        del self.cercles[elements["cercle"]]
-        del self.cercles[elements["texte"]]
-
+        for item in elements.values():
+            self.removeItem(item)
+            del self.cercles[item]
         del self.positions[nom]
-
-        self.redessiner_toutes_aretes()
-        self.mettre_a_jour_feux_graphique()
+        if self.noeud_en_attente == nom:
+            self.noeud_en_attente = None
+        self.redessiner_routes_et_feux()
 
     def deplacer_noeud(self, nom, x, y):
-        """Déplace un nœud et tout ce qui en dépend (routes, feux, véhicules)."""
+        """Déplace un nœud et tout ce qui en dépend : routes, feux, véhicules."""
         self.positions[nom] = (x, y)
-        self.mettre_a_jour_position_noeud(nom, x, y)
-        self.repositionner_aretes(nom)
-        self.mettre_a_jour_feux_graphique()
-
+        self.placer_noeud(nom)
+        for voisin in self.graphe.aretes.get(nom, {}):
+            self.dessiner_arete(nom, voisin)
+        self.redessiner_feux()
         if self.fenetre is not None:
             self.fenetre.mettre_a_jour_positions_vehicules()
             self.fenetre.mettre_a_jour_feux()
 
+    # ---------------- Dessin ----------------
 
-    def mettre_a_jour_position_noeud(self, nom, x, y):
-        """Replace le cercle et le texte d'un nœud, centrés sur (x, y)."""
-        elements = self.elements_noeuds[nom]
-        cercle = elements["cercle"]
-        texte = elements["texte"]
+    def centrer_texte(self, texte, x, y):
+        rect = texte.boundingRect()
+        texte.setPos(x - rect.width() / 2, y - rect.height() / 2)
 
-        # Cercle de rayon 15 : le rectangle englobant commence à (x-15, y-15).
-        cercle.setRect(
-            x - 15,
-            y - 15,
-            30,
-            30
-        )
+    def dessiner_noeud(self, nom, x, y):
+        cercle = self.addEllipse(0, 0, 0, 0)
+        cercle.setBrush(QBrush(QColor("lightblue")))
+        texte = self.addText(nom)
+        texte.setDefaultTextColor(COULEUR_TEXTE)
+        texte.setAcceptedMouseButtons(Qt.MouseButton.NoButton)  # le clic passe au cercle
+        # ZValue = ordre d'empilement : routes 1, nœuds 2, textes 3 et 4.
+        cercle.setZValue(2)
+        texte.setZValue(3)
+        self.cercles[cercle] = nom
+        self.cercles[texte] = nom
+        self.elements_noeuds[nom] = {"cercle": cercle, "texte": texte}
+        self.positions[nom] = (x, y)
+        self.placer_noeud(nom)
 
-        largeur = texte.boundingRect().width()
-        hauteur = texte.boundingRect().height()
-        texte.setPos(
-            x - largeur / 2,
-            y - hauteur / 2
-        )
+    def placer_noeud(self, nom):
+        """Place le cercle et le texte d'un nœud sur sa position actuelle."""
+        x, y = self.positions[nom]
+        r = RAYON_NOEUD
+        self.elements_noeuds[nom]["cercle"].setRect(x - r, y - r, 2 * r, 2 * r)
+        self.centrer_texte(self.elements_noeuds[nom]["texte"], x, y)
 
-    # ------------------------------------------------------------------
-    # Dessin des routes et des feux
-    # ------------------------------------------------------------------
-
-    def repositionner_aretes(self, nom):
-        """Redessine les routes qui touchent un nœud déplacé."""
-        if nom not in self.graphe.aretes:
+    def dessiner_arete(self, depart, arrivee):
+        """Dessine (ou déplace, si elle existe déjà) une route : deux voies et son poids."""
+        cle = cle_arete(depart, arrivee)
+        x1, y1 = self.positions[depart]
+        x2, y2 = self.positions[arrivee]
+        longueur = math.hypot(x2 - x1, y2 - y1)
+        if longueur == 0:
             return
 
-        for voisin in self.graphe.aretes[nom]:
-            self.dessiner_arete(nom, voisin)
+        # Les lignes s'arrêtent au bord des cercles, pas en leur centre.
+        bord_x = (x2 - x1) / longueur * RAYON_NOEUD
+        bord_y = (y2 - y1) / longueur * RAYON_NOEUD
+        dec_x, dec_y = decalage_perpendiculaire(x1, y1, x2, y2)
 
-    def redessiner_toutes_aretes(self):
-        """Efface toutes les routes dessinées puis les recrée depuis le modèle."""
+        # Première fois : on crée les deux lignes et le texte du poids.
+        if cle not in self.lignes_aretes:
+            self.lignes_aretes[cle] = [self.addLine(0, 0, 0, 0), self.addLine(0, 0, 0, 0)]
+            for ligne in self.lignes_aretes[cle]:
+                ligne.setZValue(1)
+            texte = self.addText("")
+            texte.setDefaultTextColor(COULEUR_TEXTE)
+            texte.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            texte.setZValue(4)
+            self.textes_poids[cle] = texte
 
+        # Une voie de chaque côté de l'axe de la route (sens = +1 puis -1).
+        for ligne, sens in zip(self.lignes_aretes[cle], (1, -1)):
+            ligne.setLine(x1 + bord_x + sens * dec_x, y1 + bord_y + sens * dec_y,
+                          x2 - bord_x + sens * dec_x, y2 - bord_y + sens * dec_y)
+
+        # La distance est écrite en gras sur une petite étiquette blanche, pour rester
+        # lisible par-dessus les lignes de la route (mise en forme façon HTML).
+        texte = self.textes_poids[cle]
+        distance = formater_distance(self.graphe.aretes[depart][arrivee])
+        texte.setHtml(f"<span style='background-color: white; font-weight: bold;'>&nbsp;{distance}&nbsp;</span>")
+        self.centrer_texte(texte, (x1 + x2) / 2, (y1 + y2) / 2)
+
+    def redessiner_routes_et_feux(self):
+        """Efface toutes les routes puis les recrée depuis le modèle (après renommage/suppression)."""
         for cle in self.lignes_aretes:
             for ligne in self.lignes_aretes[cle]:
                 self.removeItem(ligne)
-
-        for cle in self.textes_poids:
             self.removeItem(self.textes_poids[cle])
-
         self.lignes_aretes = {}
         self.textes_poids = {}
-
         for depart in self.graphe.aretes:
             for arrivee in self.graphe.aretes[depart]:
-                # Chaque route est stockée dans les deux sens : on ne la
-                # dessine qu'une fois.
-                if depart < arrivee:
+                if depart < arrivee:  # chaque route est stockée deux fois : on la dessine une fois
                     self.dessiner_arete(depart, arrivee)
+        self.redessiner_feux()
 
-    def mettre_a_jour_feux_graphique(self):
-        """Efface toutes les pastilles de feux puis les redessine."""
-        anciens_feux = self.feux
-        self.feux = {}
-
-        for noeud in anciens_feux:
-            for voisin in anciens_feux[noeud]:
-                self.removeItem(anciens_feux[noeud][voisin]["graphique"])
-
+    def redessiner_feux(self):
+        for noeud in list(self.feux):
+            self.effacer_feu(noeud)
         for noeud in self.graphe.noeuds:
-            if isinstance(self.graphe.noeuds[noeud], dict):
-                groupes = self.graphe.noeuds[noeud]["phases"]
-                self.dessiner_feu(noeud, groupes)
+            if self.graphe.a_un_feu(noeud):
+                self.dessiner_feu(noeud, self.graphe.noeuds[noeud]["phases"])
 
-
-    def creer_noeud(self, x, y):
-        """Demande un nom puis ajoute le nœud au modèle et à la scène."""
-        nom, valide = QInputDialog.getText(
-            None,
-            "Nouveau nœud",
-            "Nom du nœud :"
-        )
-
-        if valide == False:
-            return
-
-        if nom == "":
-            print("Aucun nom n'a été donné")
-            return
-
-        try:
-            self.graphe.ajouter_noeud(nom)
-            print(self.graphe.noeuds)
-        except ValueError:
-            print(f"le noeud {nom} existe déjà")
-            return
-
-        self.dessiner_noeud(nom, x, y)
-        if self.fenetre is not None:
-            self.fenetre.statusBar().showMessage("Nœud créé", 3000)
-
-    def dessiner_noeud(self, nom, x, y):
-        """Crée le cercle et le texte d'un nœud."""
-        cercle = self.addEllipse(
-            x - 15,
-            y - 15,
-            30,
-            30)
-        cercle.setBrush(QBrush(QColor("lightblue")))
-        # ZValue = ordre d'empilement : plus il est grand, plus l'objet est devant.
-        # Routes = 1, nœuds = 2, textes = 3 et 4.
-        cercle.setZValue(2)
-        self.cercles[cercle] = nom
-
-        self.positions[nom] = (x, y)
-
-        texte = self.addText(nom)
-        # Le texte laisse passer les clics vers le cercle situé dessous.
-        texte.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-        texte.setZValue(3)
-        self.cercles[texte] = nom
-
-        largeur = texte.boundingRect().width()
-        hauteur = texte.boundingRect().height()
-
-        texte.setPos(
-            x - largeur / 2,
-            y - hauteur / 2
-        )
-
-        self.elements_noeuds[nom] = {
-            "cercle": cercle,
-            "texte": texte
-        }
-
-    def dessiner_arete(self, depart, arrivee):
-        """Dessine les deux voies et le poids de la route entre deux nœuds.
-
-        Si la route est déjà dessinée, on déplace simplement ses lignes
-        au lieu d'en créer de nouvelles.
-        """
-        cle = self.cle_arete(depart, arrivee)
-        x1, y1 = self.positions[depart]
-        x2, y2 = self.positions[arrivee]
-
-        # Arrêter les lignes au bord des cercles des nœuds, pas en leur centre.
-        rayon = 15
-
-        dx = x2 - x1
-        dy = y2 - y1
-
-        distance = (dx ** 2 + dy ** 2) ** 0.5
-
-        if distance == 0:
-            return
-
-        # Vecteur unitaire (longueur 1) dans la direction de la route.
-        dx_norm = dx / distance
-        dy_norm = dy / distance
-
-        x1_bord = x1 + dx_norm * rayon
-        y1_bord = y1 + dy_norm * rayon
-
-        x2_bord = x2 - dx_norm * rayon
-        y2_bord = y2 - dy_norm * rayon
-
-        # Décaler les deux segments de part et d'autre de l'axe de la route.
-        decalage_x, decalage_y = self.calculer_decalage_perpendiculaire(
-            x1,
-            y1,
-            x2,
-            y2
-        )
-
-        if cle in self.lignes_aretes:
-
-            self.lignes_aretes[cle][0].setLine(
-                x1_bord + decalage_x,
-                y1_bord + decalage_y,
-                x2_bord + decalage_x,
-                y2_bord + decalage_y
-            )
-            self.lignes_aretes[cle][1].setLine(
-                x1_bord - decalage_x,
-                y1_bord - decalage_y,
-                x2_bord - decalage_x,
-                y2_bord - decalage_y
-            )
-        else:
-            ligne_1 = self.addLine(
-                x1_bord + decalage_x,
-                y1_bord + decalage_y,
-                x2_bord + decalage_x,
-                y2_bord + decalage_y
-            )
-            ligne_2 = self.addLine(
-                x1_bord - decalage_x,
-                y1_bord - decalage_y,
-                x2_bord - decalage_x,
-                y2_bord - decalage_y
-            )
-            ligne_1.setZValue(1)
-            ligne_2.setZValue(1)
-            self.lignes_aretes[cle] = [ligne_1, ligne_2]
-
-        # Le poids est affiché au milieu de la route.
-        poids = self.graphe.aretes[depart][arrivee]
-        milieu_x = (x1 + x2) / 2
-        milieu_y = (y1 + y2) / 2
-
-        if cle in self.textes_poids:
-            texte_poids = self.textes_poids[cle]
-            texte_poids.setPlainText(str(poids))
-        else:
-            texte_poids = self.addText(str(poids))
-            texte_poids.setDefaultTextColor(QColor("black"))
-            texte_poids.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-            texte_poids.setZValue(4)
-            self.textes_poids[cle] = texte_poids
-
-        largeur = texte_poids.boundingRect().width()
-        hauteur = texte_poids.boundingRect().height()
-
-        texte_poids.setPos(
-            milieu_x - largeur / 2,
-            milieu_y - hauteur / 2
-        )
+    def effacer_feu(self, noeud):
+        for feu in self.feux.pop(noeud, {}).values():
+            self.removeItem(feu["graphique"])
 
     def dessiner_feu(self, noeud, groupes):
-        """Dessine un indicateur coloré pour chaque direction des phases du feu."""
-        x, y = self.positions[noeud]
-
-        # Si ce carrefour avait déjà un feu (feu ajouté deux fois), on retire
-        # d'abord ses anciennes pastilles. Sinon elles resteraient affichées
-        # sans plus jamais changer de couleur.
-        if noeud in self.feux:
-            for ancien_feu in self.feux[noeud].values():
-                self.removeItem(ancien_feu["graphique"])
-
+        """Une pastille par route du carrefour, placée au quart de la route."""
+        # Si le carrefour avait déjà un feu, on retire ses anciennes pastilles.
+        self.effacer_feu(noeud)
         self.feux[noeud] = {}
-
-        for groupe in range(2):
-
-            for voisin in groupes[groupe]:
-
+        x, y = self.positions[noeud]
+        for groupe, voisins in enumerate(groupes):
+            for voisin in voisins:
                 xv, yv = self.positions[voisin]
-
-                dx = xv - x
-                dy = yv - y
-
-                # La pastille est placée au quart de la route, côté carrefour.
-                facteur = 0.25
-
-                feu_x = x + dx * facteur
-                feu_y = y + dy * facteur
-
-                feu = self.addEllipse(
-                    feu_x - 6,
-                    feu_y - 6,
-                    12,
-                    12
-                )
-                # Couleur initiale : la phase 0 est active au départ.
-                if groupe == 0:
-                    feu.setBrush(QBrush(QColor("green")))
-                else:
-                    feu.setBrush(QBrush(QColor("red")))
-
-                self.feux[noeud][voisin] = {
-                    "graphique": feu,
-                    "groupe": groupe
-                }
+                feu_x = x + (xv - x) * 0.25
+                feu_y = y + (yv - y) * 0.25
+                pastille = self.addEllipse(feu_x - 6, feu_y - 6, 12, 12)
+                # Au départ, la phase 0 est verte.
+                pastille.setBrush(QBrush(QColor("green" if groupe == 0 else "red")))
+                self.feux[noeud][voisin] = {"graphique": pastille, "groupe": groupe}

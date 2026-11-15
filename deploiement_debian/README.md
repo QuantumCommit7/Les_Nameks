@@ -282,12 +282,12 @@ Revérifiez les colonnes avec `SHOW COLUMNS`. La migration n'efface pas les lign
 | `$'\r': command not found` en lançant `installer.sh` | Le script a été enregistré avec des fins de ligne Windows. | `sed -i 's/\r$//' installer.sh`, puis relancer `bash installer.sh`. |
 | `python3: command not found` | Python absent ou PATH inhabituel. | `sudo apt-get install -y python3`. |
 | `No module named pymysql` | Paquet système absent. | `sudo apt-get install -y python3-pymysql`. |
-| `.env` manquant ou incomplet (le serveur affiche `FileNotFoundError` ou « incomplet ») | Fichier absent du dossier exact ou valeur requise vide. | Créer `deploiement_debian/.env` depuis `.env.example` (section 5) ; ne pas afficher son contenu. |
+| Le serveur ou le test affiche `Configuration … impossible à lire` | Fichier absent du dossier exact ou valeur requise vide. | Créer `deploiement_debian/.env` depuis `.env.example` (section 5) ; ne pas afficher son contenu. |
 | Accès MariaDB refusé (1045) | Nom d'utilisateur, mot de passe ou hôte de compte incorrect. | Vérifier les paramètres localement et `SHOW GRANTS` ; rétablir les droits sans partager le secret. |
 | MariaDB arrêtée / connexion locale refusée (2003) | Service arrêté ou mauvais `DB_HOST` ou port. | `sudo systemctl status mariadb --no-pager` ; `.env` doit utiliser `127.0.0.1` et `3306`. |
 | Base ou table inconnue | Scripts SQL non appliqués ou mauvais nom. | `sudo mariadb -e "SHOW TABLES IN simulation_trafic;"` ; sur une VM neuve, suivre les deux commandes de la section 3. |
 | Colonne inconnue dans INSERT | Migration absente. | `SHOW COLUMNS FROM statistiques` ; ne migrer une base existante qu'après sauvegarde et selon la section 10. |
-| `Impossible de démarrer le serveur TCP (OSError)` | Un autre processus utilise déjà le port 5000 (souvent un serveur déjà lancé dans un autre terminal). | `sudo ss -ltnp \| grep ':5000'` ; identifier le processus avant toute action, ne pas l'arrêter à l'aveugle. |
+| `Impossible de démarrer le serveur TCP : le port 5000 est peut-être déjà utilisé.` | Un autre processus utilise déjà le port 5000 (souvent un serveur déjà lancé dans un autre terminal). | `sudo ss -ltnp \| grep ':5000'` ; identifier le processus avant toute action, ne pas l'arrêter à l'aveugle. |
 | Windows indique `Connection refused` | Serveur arrêté ou port bloqué. | Debian : vérifier `ss` ; Windows : `Test-NetConnection -ComputerName $env:NAMEKS_SERVER_HOST -Port 5000`. |
 | Windows indique timeout / inaccessible | VM en mode NAT, adresse d'une mauvaise interface ou pare-feu. | Comparer l'adresse avec `ip -4 -brief address` ; passer la VM en Accès par pont ou ajouter la redirection du port 5000 (README principal, étape 4.1). |
 | Simulation active, aucune ligne n'arrive | Port injoignable, mauvais `.env`, colonnes manquantes ou serveur arrêté. | Lire les deux terminaux, refaire le test de la section 6, `Test-NetConnection`, puis la requête de la section 9. |
