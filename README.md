@@ -9,6 +9,7 @@
 | **Étudiant 2** | SICHARD Lommé |
 | **Formation** | BUT2 R&T, IUT de Colmar |
 | **Dépôt** | <https://github.com/QuantumCommit7/Les_Nameks> |
+| **Usage de l'IA** | [IAGraphie.pdf](IAGraphie.pdf) |
 
 ## Sommaire
 
