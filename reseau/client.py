@@ -16,7 +16,15 @@ PORT = 5000
 
 
 def envoyer_message(message, timeout=5):
-    """Ouvre une connexion, envoie une ligne terminée par "\\n", puis ferme."""
+    """Ouvre une connexion TCP, envoie une ligne terminée par "\\n", puis ferme.
+
+    Args:
+        message (str): texte à envoyer (un relevé JSON pour le simulateur).
+        timeout (float): délai maximal d'attente, en secondes.
+
+    Raises:
+        OSError: si le serveur est injoignable ou ne répond pas à temps.
+    """
     # « with » ferme la connexion automatiquement à la fin du bloc.
     with socket.create_connection((ADRESSE_SERVEUR, PORT), timeout=timeout) as connexion:
         # encode : texte -> octets, seul format qu'on peut envoyer sur le réseau.

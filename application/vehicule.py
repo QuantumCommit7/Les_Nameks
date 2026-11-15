@@ -11,8 +11,32 @@ DUREE_TICK = 0.02  # secondes entre deux ticks (minuterie de 20 ms dans interfac
 
 
 class Vehicule:
+    """Véhicule qui suit le chemin le plus court calculé par Dijkstra.
+
+    Attributes:
+        destination (str): nœud d'arrivée du trajet.
+        vitesse (float): vitesse en pixels par seconde.
+        est_urgent (bool): True pour un véhicule prioritaire.
+        chemin (list[str]): nœuds du trajet complet, du départ à la destination.
+        index_chemin (int): position de `depart` dans `chemin`.
+        depart (str): début de la route actuelle.
+        arrivee (str): fin de la route actuelle.
+        avancement (float): proportion de la route actuelle parcourue (0 = début, 1 = bout).
+    """
 
     def __init__(self, graphe, depart, vitesse, destination, est_urgent=False):
+        """Calcule le chemin du véhicule et le place au début de sa première route.
+
+        Args:
+            graphe (Graphes): réseau routier.
+            depart (str): nœud de départ.
+            vitesse (float): vitesse en pixels par seconde.
+            destination (str): nœud d'arrivée.
+            est_urgent (bool): True pour un véhicule prioritaire.
+
+        Raises:
+            ValueError: si aucun chemin n'existe, ou si départ et destination sont identiques.
+        """
         self.destination = destination
         self.vitesse = vitesse  # en pixels par seconde
         self.est_urgent = est_urgent
@@ -31,18 +55,25 @@ class Vehicule:
         self.avancement = 0
 
     def est_sur_derniere_route(self):
-        """Vrai si la route actuelle mène directement à la destination.
+        """Indique si la route actuelle mène directement à la destination.
 
         Sur cette route, le feu du dernier nœud ne concerne pas le véhicule :
         il s'arrête à destination, il ne traverse pas le carrefour.
+
+        Returns:
+            bool: True sur la dernière route du trajet.
         """
         return self.arrivee == self.destination
 
     def avancer(self, graphe, longueur_route):
         """Fait avancer le véhicule d'un tick (20 ms).
 
-        longueur_route : longueur en pixels de la route actuelle.
-        Renvoie "en cours", "attends feu" ou "arrive".
+        Args:
+            graphe (Graphes): réseau routier (pour consulter et, si prioritaire, changer les feux).
+            longueur_route (float): longueur en pixels de la route actuelle.
+
+        Returns:
+            str: "en cours", "attends feu" (arrêté à un feu rouge) ou "arrive" (trajet terminé).
         """
         # Distance parcourue pendant un tick, convertie en proportion de la route.
         # Exemple : 60 px/s pendant 0,02 s = 1,2 px ; sur une route de 120 px, +0.01.

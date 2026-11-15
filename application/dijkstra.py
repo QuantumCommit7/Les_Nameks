@@ -4,10 +4,18 @@ from math import inf  # l'infini : distance d'un nœud qu'on ne sait pas encore 
 
 
 def dijkstra(graphe, depart, arrivee):
-    """Renvoie la liste des nœuds du chemin, ou None si aucun chemin n'existe.
+    """Calcule le chemin le plus court (en mètres) entre deux nœuds.
 
     Exemple : dijkstra(graphe, "A", "H") -> ["A", "B", "G", "H"].
-    Les poids des routes doivent être positifs.
+
+    Args:
+        graphe (Graphes): réseau routier ; les poids des routes doivent être positifs.
+        depart (str): nœud de départ.
+        arrivee (str): nœud d'arrivée.
+
+    Returns:
+        list[str] | None: les nœuds du chemin, du départ à l'arrivée ; [depart] si les
+        deux nœuds sont identiques ; None si un nœud n'existe pas ou si aucun chemin n'existe.
     """
     if depart not in graphe.noeuds or arrivee not in graphe.noeuds:
         return None

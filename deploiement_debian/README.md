@@ -1,6 +1,6 @@
 # Déployer le serveur Les_Nameks sur Debian
 
-Ce guide installe le serveur TCP et MariaDB sur une VM Debian neuve à partir des fichiers du projet. Il ne nécessite ni Git ni accès au dépôt en ligne. Si l'application tourne elle aussi sur une VM Debian (deux VM, sans ZIP), suivez d'abord la [Variante B du README principal](../README.md#variante-b--deux-vm-debian-sans-zip) : elle vous renvoie ici pour les sections 0 et 2 à 8. **Exécutez les sections 0 à 8 dans l'ordre**, puis revenez à l'étape 4 du [README principal](../README.md). Les commandes sont à lancer dans un terminal Debian, sauf mention contraire.
+Ce guide installe le serveur TCP et MariaDB sur une VM Debian neuve à partir des fichiers du projet, récupérés en clonant le dépôt GitHub (section 1.0) ou envoyés depuis un PC Windows (sections 1.1 à 1.5). Si l'application tourne elle aussi sur une VM Debian (deux VM, sans ZIP), suivez d'abord la [Variante B du README principal](../README.md#variante-b--deux-vm-debian-sans-zip) : elle vous renvoie ici pour les sections 0 et 2 à 8. **Exécutez les sections 0 à 8 dans l'ordre**, puis revenez à l'étape 4 du [README principal](../README.md). Les commandes sont à lancer dans un terminal Debian, sauf mention contraire.
 
 Le client Windows envoie des mesures au serveur Python sur le port TCP `5000`. Le serveur écrit les mesures dans MariaDB, qui reste locale à Debian sur `127.0.0.1:3306`. N'ouvrez pas le port `3306` au réseau.
 
@@ -27,7 +27,24 @@ exit
 
 `su -` demande le **mot de passe root** choisi pendant l'installation de Debian. Remplacez `etudiant` par votre nom d'utilisateur. **Fermez ensuite complètement votre session** (déconnexion, ou redémarrage de la VM) et reconnectez-vous : le nouveau droit n'est pris en compte qu'à la connexion suivante. Refaites `sudo whoami` pour vérifier.
 
-## 1. Envoyer le projet du PC Windows vers la VM
+## 1. Mettre le projet sur la VM
+
+### 1.0 Méthode la plus simple : cloner le dépôt sur la VM
+
+Si la VM a accès à Internet, récupérez le projet directement depuis GitHub, dans un terminal de la VM :
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git
+git clone https://github.com/QuantumCommit7/Les_Nameks.git ~/Les_Nameks
+ls ~/Les_Nameks
+```
+
+**Résultat attendu :** `README.md`, `reseau` et `deploiement_debian` apparaissent. Passez alors directement à la **section 2**. Pour récupérer plus tard une nouvelle version : `cd ~/Les_Nameks && git pull` (votre fichier `deploiement_debian/.env` n'est pas dans le dépôt : il est conservé).
+
+Si la VM n'a pas Internet, ou si vous devez partir d'un ZIP, suivez les étapes 1.1 à 1.5 ci-dessous pour l'envoyer depuis le PC Windows.
+
+### Envoyer le projet depuis le PC Windows (sans Internet sur la VM)
 
 Situation de départ : le ZIP du projet est sur le **PC 1** (Windows, celui qui lancera l'application) et la VM Debian tourne sur le **PC 2**. On va copier le ZIP à travers le réseau avec la commande `scp`, déjà intégrée à Windows 10 et 11.
 

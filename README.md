@@ -1,6 +1,26 @@
-# Les_Nameks — guide de déploiement
+# Les_Nameks — simulateur de trafic routier
 
-Ce guide permet à un groupe qui découvre le projet de lancer le simulateur, puis d'enregistrer ses statistiques sur une VM Debian. **Suivez les étapes dans l'ordre, sans en sauter.** Chaque étape se termine par un résultat attendu : ne passez à la suivante que lorsque vous l'avez obtenu.
+## Identification
+
+| | |
+| --- | --- |
+| **Nom du groupe** | Les Nameks |
+| **Étudiant 1** | SCHNEIDER FETIQUE Nathan |
+| **Étudiant 2** | SICHARD Lommé |
+| **Formation** | BUT2 R&T, IUT de Colmar |
+| **Dépôt** | <https://github.com/QuantumCommit7/Les_Nameks> |
+
+## Sommaire
+
+1. [Ce que fait le projet](#ce-que-fait-le-projet)
+2. [Choisir votre configuration](#choisir-votre-configuration)
+3. [Installation — configuration A : application Windows + serveur Debian](#étape-1--cloner-le-dépôt-windows)
+4. [Utilisation et exemples](#utiliser-linterface)
+5. [Installation — configuration B : deux VM Debian](#variante-b--deux-vm-debian-sans-zip)
+6. [Organisation et conventions du code](#organisation-et-conventions-du-code)
+7. [Dépannage](#problèmes-fréquents)
+
+Ce guide permet à un groupe qui découvre le projet de l'installer, de lancer le simulateur, puis d'enregistrer ses statistiques sur une VM Debian. **Suivez les étapes dans l'ordre, sans en sauter.** Chaque étape se termine par un résultat attendu : ne passez à la suivante que lorsque vous l'avez obtenu.
 
 ## Ce que fait le projet
 
@@ -17,13 +37,13 @@ Le projet a deux parties : **l'application** (le simulateur avec sa fenêtre) et
 | **A** | PC Windows | VM Debian | Les étapes 1 à 6 ci-dessous |
 | **B** | VM Debian (avec bureau graphique) | Une seconde VM Debian | La [Variante B — deux VM Debian](#variante-b--deux-vm-debian-sans-zip), plus bas |
 
-Si l'enseignant impose deux VM, ou s'il n'y a pas de fichier ZIP, choisissez la configuration B.
+Si l'enseignant impose deux VM, choisissez la configuration B.
 
 ## Vue d'ensemble du déploiement (configuration A)
 
 | Étape | Où | Ce que l'on obtient |
 | --- | --- | --- |
-| 1. Préparer les fichiers | Windows | Le dossier `C:\Les_Nameks` |
+| 1. Cloner le dépôt | Windows | Le dossier `C:\Les_Nameks` |
 | 2. Installer et lancer l'application | Windows | Le simulateur fonctionne (sans serveur) |
 | 3. Installer le serveur | Debian | MariaDB et le serveur TCP en écoute sur le port 5000 |
 | 4. Relier Windows à Debian | Windows + hyperviseur | `TcpTestSucceeded : True` |
@@ -74,21 +94,42 @@ Utilisateur → FenetrePrincipale
 
 Le temps moyen est calculé à partir des trajets terminés et du temps de simulation active. Le relevé envoyé possède un champ `type` et six mesures. Le verrou empêche le démarrage d'un nouvel envoi si le précédent est encore actif ; le thread d'envoi évite de bloquer l'interface.
 
-`.venv/`, `__pycache__/` et les fichiers `.pyc` sont des éléments générés automatiquement : ils ne sont pas nécessaires dans le ZIP.
+`.venv/`, `__pycache__/` et les fichiers `.pyc` sont des éléments générés automatiquement : ils ne font pas partie du dépôt (voir `.gitignore`).
 
 ---
 
-## Étape 1 — Préparer les fichiers (Windows)
+## Étape 1 — Cloner le dépôt (Windows)
 
-**Dans l'Explorateur de fichiers Windows :**
+**Dans PowerShell** (menu Démarrer → « PowerShell »), vérifiez d'abord que Git est installé :
 
-1. Faites un clic droit sur `Les_Nameks.zip`, puis **Extraire tout…**.
-2. Dans le champ de destination, remplacez le chemin proposé par `C:\` puis validez. Le ZIP contient déjà un dossier `Les_Nameks` : vous obtenez donc `C:\Les_Nameks`.
-3. Ouvrez `C:\Les_Nameks`. **Vérification :** vous devez voir directement `README.md`, `requirements.txt`, `application`, `reseau` et `deploiement_debian`. Si vous voyez à la place un second dossier `Les_Nameks`, l'extraction a créé un dossier en trop : déplacez son contenu d'un niveau, ou utilisez ce sous-dossier comme racine dans toutes les commandes.
+```powershell
+git --version
+```
 
-Ne copiez pas un dossier `.venv` venant d'une autre machine : un environnement virtuel dépend du système et du chemin Python qui l'a créé.
+Si la commande affiche une version (par exemple `git version 2.47.0.windows.1`), passez à la suite. Sinon, installez Git, puis **fermez et rouvrez PowerShell** :
 
-Le groupe n'a besoin ni de Git ni de GitHub.
+```powershell
+winget install --id Git.Git -e
+```
+
+(ou téléchargez l'installateur sur <https://git-scm.com/download/win> et gardez les options par défaut).
+
+Clonez ensuite le dépôt dans `C:\Les_Nameks` :
+
+```powershell
+cd C:\
+git clone https://github.com/QuantumCommit7/Les_Nameks.git
+cd C:\Les_Nameks
+dir
+```
+
+**Résultat attendu :** `dir` affiche `README.md`, `requirements.txt`, `application`, `reseau` et `deploiement_debian`.
+
+**Mettre à jour plus tard** avec la dernière version du dépôt : `cd C:\Les_Nameks` puis `git pull`.
+
+**Sans Git :** sur la page GitHub du dépôt, cliquez sur **Code → Download ZIP**, faites un clic droit sur le fichier téléchargé → **Extraire tout…**, choisissez `C:\` comme destination, puis renommez le dossier obtenu `C:\Les_Nameks-main` en `C:\Les_Nameks`.
+
+Ne copiez pas un dossier `.venv` venant d'une autre machine : un environnement virtuel dépend du système et du chemin Python qui l'a créé. Il sera créé à l'étape 2.
 
 ## Étape 2 — Installer et lancer l'application (Windows)
 
@@ -109,7 +150,9 @@ py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Ces commandes utilisent directement le Python de l'environnement `.venv` : il n'est pas nécessaire de l'« activer », ce qui évite les blocages de la politique d'exécution PowerShell. `requirements.txt` contient PyQt6 (l'interface) et PyMySQL (utilisé seulement côté serveur, sans effet sur Windows).
+`py -m venv .venv` crée un **environnement virtuel** : un dossier `.venv` qui contient un Python propre au projet, pour que les bibliothèques installées n'interfèrent pas avec le reste de l'ordinateur. Les commandes suivantes utilisent directement le Python de cet environnement (`.venv\Scripts\python.exe`) : il n'est donc pas nécessaire de l'« activer », ce qui évite les blocages de la politique d'exécution PowerShell. `requirements.txt` contient PyQt6 (l'interface) et PyMySQL (utilisé seulement côté serveur, sans effet sur Windows).
+
+Si vous préférez activer l'environnement (facultatif), tapez `.\.venv\Scripts\Activate.ps1` : `(.venv)` apparaît au début de la ligne, et `python` désigne alors le Python de l'environnement. Si PowerShell refuse (« l'exécution de scripts est désactivée »), gardez simplement la méthode ci-dessus.
 
 Lancez l'application :
 
@@ -137,11 +180,33 @@ Tant que le serveur Debian n'est pas installé, le terminal affiche toutes les 5
 | Créer un véhicule | **Créer véhicule**, puis choisir départ, destination et type (Normal ou Prioritaire). La vitesse suit le code de la route : tous les véhicules normaux roulent à la même vitesse limite, les prioritaires plus vite, et les véhicules se rangent sur le côté pour les laisser passer. |
 | Voir le trajet d'un véhicule | Clic gauche sur le véhicule : son chemin Dijkstra s'affiche en orange. Second clic pour l'effacer. |
 
+### Exemples d'utilisation
+
+**Exemple 1 — démonstration en 30 secondes**
+
+1. Lancez l'application : `.\.venv\Scripts\python.exe application\interface.py`.
+2. Choisissez la densité **Moyen**, puis cliquez sur **Graphe de test** : 26 carrefours (A à Z), 7 feux et 12 véhicules apparaissent.
+3. Cliquez sur **Démarrer**. Les véhicules roulent à la même vitesse limite, s'arrêtent aux feux rouges et repartent au vert ; les feux changent toutes les 5 secondes.
+4. Observez le panneau **STATISTIQUES** : véhicules arrivés, temps moyen de trajet, véhicules en attente au feu ou dans un bouchon. Chaque véhicule arrivé est remplacé pour garder 12 véhicules.
+
+**Exemple 2 — un véhicule d'urgence**
+
+1. Avec le graphe de test chargé, cliquez sur **Créer véhicule** : départ `A`, destination `Z`, type **Prioritaire**.
+2. Le véhicule blanc à gyrophare bleu et rouge roule plus vite que les autres. Les véhicules qu'il rattrape se rangent sur le côté et s'arrêtent pour le laisser passer ; à l'approche d'un feu rouge, il le fait passer au vert.
+3. Cliquez sur lui : son trajet Dijkstra s'affiche en orange.
+
+**Exemple 3 — construire son propre réseau**
+
+1. Cliquez sur **Réinitialiser (tout effacer)**.
+2. **Ajouter un nœud** puis clic dans le vide : créez ainsi `A`, `B` et `C`.
+3. Cliquez sur `A` puis sur `B`, saisissez `500` et l'unité `m` ; cliquez sur `B` puis sur `C`, saisissez `1,2` (ou `1.2` si Windows est en anglais) et l'unité `km`. Les routes affichent « 500 m » et « 1,2 km ».
+4. **Créer véhicule** de `A` vers `C`, type Normal, puis **Démarrer** : le véhicule passe par `B`.
+
 ## Étape 3 — Installer le serveur (Debian)
 
 Toute la partie Debian est décrite dans **[`deploiement_debian/README.md`](deploiement_debian/README.md)**. Suivez ce guide **de la section 0 à la section 8, dans l'ordre**, puis revenez ici.
 
-Sa **section 1** explique pas à pas comment envoyer le projet de ce PC Windows vers la VM, même si la VM tourne sur un autre PC : mise en réseau de la VM, activation de SSH, puis envoi du ZIP depuis PowerShell avec `scp`.
+Sa **section 1** explique comment mettre le projet sur la VM : le plus simple est de **cloner le dépôt directement sur la VM** avec `git clone` (section 1.0). Si la VM n'a pas accès à Internet, la suite de la section 1 explique pas à pas comment l'envoyer depuis ce PC Windows avec `scp`, même si la VM tourne sur un autre PC.
 
 Ne lancez pas le serveur avant d'avoir créé le compte MariaDB et le fichier `.env` (sections 4 et 5 du guide) : sans `.env`, le serveur refuse de démarrer et affiche `Configuration MariaDB impossible à lire`.
 
@@ -253,9 +318,18 @@ Remplacez partout les adresses d'exemple par les vôtres, et `etudiant` par votr
 
 ### B.2 Copier le projet sur les deux VM, sans ZIP
 
-Le projet doit arriver dans `~/Les_Nameks` sur **chacune** des deux VM. Choisissez la méthode qui correspond à l'endroit où se trouve le projet.
+Le projet doit arriver dans `~/Les_Nameks` sur **chacune** des deux VM.
 
-**Méthode 1 — le dossier du projet est sur un PC Windows** (PowerShell sur ce PC). Pour chaque VM, créez le dossier de destination, puis copiez-y les fichiers utiles :
+**Méthode 1 (recommandée) — cloner le dépôt sur chaque VM**, si les VM ont accès à Internet. Dans un terminal de **chaque** VM :
+
+```bash
+sudo apt-get install -y git
+git clone https://github.com/QuantumCommit7/Les_Nameks.git ~/Les_Nameks
+```
+
+Pour récupérer plus tard une nouvelle version : `cd ~/Les_Nameks && git pull`.
+
+**Méthode 2 — sans Internet sur les VM, le dossier du projet est sur un PC Windows** (PowerShell sur ce PC). Pour chaque VM, créez le dossier de destination, puis copiez-y les fichiers utiles :
 
 ```powershell
 ssh etudiant@192.168.1.50 "mkdir -p ~/Les_Nameks"
@@ -264,20 +338,11 @@ scp -r C:\Les_Nameks\application C:\Les_Nameks\reseau C:\Les_Nameks\deploiement_
 
 Refaites les deux commandes avec l'adresse de l'autre VM (`192.168.1.60`). Le mot de passe Debian est demandé à chaque commande, et `yes` à la toute première connexion (voir la [section 1.4 du guide Debian](deploiement_debian/README.md#14-envoyer-le-zip-powershell-pc-1) pour le détail de ce qui s'affiche). On liste les dossiers un par un pour **ne pas copier** un éventuel dossier `.venv` de Windows, inutile et très lourd.
 
-**Méthode 2 — le projet est déjà sur l'une des VM** : copiez-le vers l'autre, depuis un terminal de la VM qui l'a :
+**Méthode 3 — le projet est déjà sur l'une des VM** : copiez-le vers l'autre, depuis un terminal de la VM qui l'a :
 
 ```bash
 scp -r ~/Les_Nameks etudiant@192.168.1.50:~/
 ```
-
-**Méthode 3 — avec Git**, si le groupe a accès au dépôt GitHub du projet :
-
-```bash
-sudo apt-get install -y git
-git clone https://github.com/QuantumCommit7/Les_Nameks.git ~/Les_Nameks
-```
-
-Si le dépôt est privé, GitHub demande un nom d'utilisateur et un **jeton d'accès** (pas le mot de passe du compte) : demandez au propriétaire du dépôt de vous ajouter comme collaborateur ou d'utiliser plutôt la méthode 1 ou 2.
 
 **Vérification, sur chaque VM :**
 
@@ -289,7 +354,7 @@ ls ~/Les_Nameks
 
 ### B.3 Installer le serveur (VM-SERVEUR)
 
-Suivez le [guide Debian](deploiement_debian/README.md) **sections 0 et 2 à 8** : la section 1 (envoi du ZIP) est remplacée par l'étape B.2. À la fin, le serveur affiche `Serveur en écoute sur 0.0.0.0:5000...` : laissez ce terminal ouvert.
+Suivez le [guide Debian](deploiement_debian/README.md) **sections 0 et 2 à 8** : la section 1 (récupération du projet) est remplacée par l'étape B.2. À la fin, le serveur affiche `Serveur en écoute sur 0.0.0.0:5000...` : laissez ce terminal ouvert.
 
 ### B.4 Installer et lancer l'application (VM-APP)
 
@@ -382,6 +447,47 @@ sudo mariadb simulation_trafic -e "SELECT id, date_mesure, vehicules_actifs, veh
 
 ---
 
+## Organisation et conventions du code
+
+```text
+Les_Nameks/
+├── application/            l'application graphique (PyQt6)
+│   ├── interface.py        point d'entrée : fenêtre, minuteries, règles de circulation
+│   ├── scene_graphe.py     dessin du réseau et gestion de la souris
+│   ├── vue_graphe.py       zoom et déplacement de la vue
+│   ├── graphes.py          modèle du réseau : nœuds, routes, feux
+│   ├── dijkstra.py         calcul du plus court chemin
+│   ├── vehicule.py         progression d'un véhicule sur son chemin
+│   └── graphe_test.py      données du réseau de démonstration
+├── reseau/
+│   ├── client.py           envoi des relevés JSON par TCP
+│   └── serveur.py          réception, validation et enregistrement dans MariaDB
+├── deploiement_debian/     installation du serveur (script, SQL, .env.example, test, guide)
+├── requirements.txt        dépendances Python
+└── README.md               ce document
+```
+
+- **Docstrings** : chaque module, classe et fonction a une docstring au **format Google** : une phrase de résumé, une explication si nécessaire, puis les rubriques `Args:` (paramètres), `Returns:` (valeur renvoyée), `Raises:` (exceptions) et `Attributes:` (attributs d'une classe). Exemple, dans `application/dijkstra.py` :
+
+  ```python
+  def dijkstra(graphe, depart, arrivee):
+      """Calcule le chemin le plus court (en mètres) entre deux nœuds.
+
+      Args:
+          graphe (Graphes): réseau routier ; les poids des routes doivent être positifs.
+          depart (str): nœud de départ.
+          arrivee (str): nœud d'arrivée.
+
+      Returns:
+          list[str] | None: les nœuds du chemin, ou None si aucun chemin n'existe.
+      """
+  ```
+
+  Dans un terminal Python, `help(dijkstra)` affiche cette documentation.
+- **Commentaires** : en français, ils expliquent le *pourquoi* des lignes moins évidentes (calculs de position, règles de priorité, verrou réseau…).
+- **Séparation des rôles** : le modèle (`graphes.py`, `vehicule.py`, `dijkstra.py`) ne dépend pas de l'interface ; l'interface (`interface.py`, `scene_graphe.py`, `vue_graphe.py`) ne fait qu'afficher et appeler le modèle ; la partie réseau (`reseau/`) est indépendante des deux.
+- **Réglages** regroupés en constantes en haut des fichiers (vitesses et distances du code de la route dans `interface.py`, port et adresse dans `reseau/`).
+
 ## Dépendances et limitations connues
 
 Les dépendances Python sont `PyQt6` et `PyMySQL` dans `requirements.txt`. Côté Debian, l'installateur fournit PyMySQL par le paquet système `python3-pymysql` ; la VM serveur n'a pas besoin de PyQt6. Dans la variante B, la VM application utilise le paquet `python3-pyqt6` (Debian 12 et plus) ou PyQt6 installé par pip (Debian 11), et n'a pas besoin de PyMySQL.
@@ -406,9 +512,9 @@ Les graphes ne sont pas enregistrés sur disque. Le client n'a pas de file de re
 
 Pour les problèmes propres à Debian (`sudo`, MariaDB, `.env`, port déjà utilisé), consultez le tableau de dépannage du [guide Debian](deploiement_debian/README.md#11-problèmes-fréquents-et-solutions).
 
-## Préparer le ZIP à remettre
+## Annexe — partager le projet sans Git (ZIP)
 
-Le ZIP doit s'extraire en un dossier nommé exactement `Les_Nameks`, et ne contenir aucun secret.
+Le projet se récupère normalement en clonant le dépôt GitHub (étape 1). Si vous devez tout de même le transmettre sous forme de ZIP (clé USB, machine sans Internet), le ZIP doit s'extraire en un dossier nommé exactement `Les_Nameks`, et ne contenir aucun secret.
 
 1. Dans l'Explorateur, créez un dossier vide `C:\livrable`, puis à l'intérieur un dossier **`Les_Nameks`** (ce nom exact, car toutes les commandes des guides l'utilisent). Ne modifiez pas votre dossier de travail.
 2. Copiez dans `C:\livrable\Les_Nameks` : `README.md`, `requirements.txt`, `.gitattributes`, les dossiers `application` et `reseau`.

@@ -24,7 +24,18 @@ CHAMPS_ENTIERS = ("vehicules_actifs", "vehicules_arrives", "vehicules_prioritair
 
 
 def lire_configuration_db():
-    """Lit le fichier .env (une ligne CLE=VALEUR par paramètre)."""
+    """Lit les paramètres de connexion MariaDB dans deploiement_debian/.env.
+
+    Le fichier contient une ligne CLE=VALEUR par paramètre ; les lignes vides
+    et celles qui commencent par # sont ignorées.
+
+    Returns:
+        dict: DB_HOST, DB_PORT (int), DB_NAME, DB_USER et DB_PASSWORD.
+
+    Raises:
+        OSError: si le fichier .env est introuvable ou illisible.
+        ValueError: si un paramètre manque, est vide, ou si DB_PORT n'est pas un entier.
+    """
     configuration = {}
     with FICHIER_ENV.open(encoding="utf-8") as fichier:
         for ligne in fichier:
@@ -40,7 +51,18 @@ def lire_configuration_db():
 
 
 def recevoir_message(connexion):
-    """Lit jusqu'au saut de ligne (ou jusqu'à la fermeture par le client)."""
+    """Lit un message jusqu'au saut de ligne (ou jusqu'à la fermeture par le client).
+
+    Args:
+        connexion (socket.socket): connexion avec le client.
+
+    Returns:
+        str: le message reçu, sans le saut de ligne.
+
+    Raises:
+        ValueError: si le message dépasse 64 Kio ou n'est pas en UTF-8.
+        OSError: en cas d'erreur réseau ou de délai dépassé.
+    """
     donnees = b""
     # TCP peut découper un message en plusieurs morceaux : on lit en boucle.
     while b"\n" not in donnees:
@@ -54,7 +76,14 @@ def recevoir_message(connexion):
 
 
 def verifier_statistiques(donnees):
-    """Renvoie un message d'erreur, ou None si le relevé est correct."""
+    """Vérifie qu'un relevé contient six mesures valides avant de l'enregistrer.
+
+    Args:
+        donnees (dict): relevé reçu, déjà converti depuis le JSON.
+
+    Returns:
+        str | None: un message décrivant la première erreur trouvée, ou None si tout est correct.
+    """
     for champ in CHAMPS_ENTIERS:
         valeur = donnees.get(champ)
         # type(...) is int refuse aussi True/False.
@@ -68,7 +97,14 @@ def verifier_statistiques(donnees):
 
 
 def enregistrer_statistiques(donnees, configuration):
-    """Ouvre une connexion MariaDB, insère le relevé, puis ferme la connexion."""
+    """Ouvre une connexion MariaDB, insère le relevé, puis ferme la connexion.
+
+    Une erreur MariaDB est affichée (sans le mot de passe) mais n'arrête pas le serveur.
+
+    Args:
+        donnees (dict): relevé validé par verifier_statistiques.
+        configuration (dict): paramètres de connexion lus dans le fichier .env.
+    """
     connexion_db = None
     try:
         connexion_db = pymysql.connect(
@@ -98,7 +134,13 @@ def enregistrer_statistiques(donnees, configuration):
 
 
 def gerer_client(connexion, adresse, configuration):
-    """Traite un client (dans son propre thread), puis ferme sa connexion."""
+    """Traite un client dans son propre thread : lecture, vérification, enregistrement.
+
+    Args:
+        connexion (socket.socket): connexion avec le client (fermée à la fin).
+        adresse (tuple): (adresse IP, port) du client.
+        configuration (dict): paramètres de connexion MariaDB.
+    """
     ip = adresse[0]
     with connexion:
         print(f"Client connecté : {ip}")
@@ -125,6 +167,10 @@ def gerer_client(connexion, adresse, configuration):
 
 
 def main():
+    """Lit la configuration, ouvre le port 5000 et traite les clients un par thread.
+
+    S'arrête avec un message clair si le fichier .env est invalide ou si le port est déjà pris.
+    """
     # On lit la configuration dès le démarrage : sans .env valide, inutile de continuer.
     try:
         configuration = lire_configuration_db()

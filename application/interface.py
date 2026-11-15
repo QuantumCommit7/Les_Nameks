@@ -77,10 +77,24 @@ STYLE = """
 
 
 class FenetrePrincipale(QMainWindow):
+    """Fenêtre principale : relie l'interface, la simulation et l'envoi des statistiques.
+
+    Attributes:
+        graphe (Graphes): réseau routier en cours (nœuds, routes, feux).
+        vehicules (list[Vehicule]): véhicules actuellement sur le réseau.
+        nombre_vehicules_voulu (int): densité à maintenir (0 = pas de remplacement).
+        simulation_active (bool): True pendant la simulation, False en pause.
+        feu_vert (bool): phase commune à tous les feux (True = phase 0, False = phase 1).
+        gyrophares (dict): véhicule prioritaire -> liste de (lampe, halo, couleur).
+        transitions (dict): véhicule -> position (x, y) au moment où il a changé de route.
+        scene (SceneGraphe): dessin du réseau.
+        view (VueGraphe): vue avec zoom et déplacement.
+    """
 
     # ==================== 1. Construction de la fenêtre ====================
 
     def __init__(self):
+        """Crée l'état de la simulation, les widgets du panneau latéral et les minuteries."""
         super().__init__()
         self.setWindowTitle("Simulateur de trafic")
         self.resize(1000, 700)
@@ -153,17 +167,42 @@ class FenetrePrincipale(QMainWindow):
         self.actualiser_statistiques()
 
     def creer_bouton(self, texte, action):
+        """Crée un bouton relié à une méthode.
+
+        Args:
+            texte (str): texte affiché sur le bouton.
+            action (callable): méthode appelée à chaque clic.
+
+        Returns:
+            QPushButton: le bouton créé.
+        """
         bouton = QPushButton(texte)
         bouton.clicked.connect(action)
         return bouton
 
     def creer_minuterie(self, action):
+        """Crée une minuterie Qt (arrêtée) reliée à une méthode.
+
+        Args:
+            action (callable): méthode appelée à chaque déclenchement.
+
+        Returns:
+            QTimer: la minuterie ; on la lance plus tard avec start(intervalle_ms).
+        """
         minuterie = QTimer()
         minuterie.timeout.connect(action)
         return minuterie
 
     def creer_section(self, titre, widgets):
-        """Un cadre titré qui empile des widgets verticalement."""
+        """Crée un cadre titré qui empile des widgets verticalement.
+
+        Args:
+            titre (str): titre du cadre (ex. « SIMULATION »).
+            widgets (list[QWidget]): widgets à placer dans le cadre, de haut en bas.
+
+        Returns:
+            QGroupBox: le cadre rempli.
+        """
         section = QGroupBox(titre)
         layout = QVBoxLayout()
         for widget in widgets:
@@ -172,7 +211,14 @@ class FenetrePrincipale(QMainWindow):
         return section
 
     def creer_section_statistiques(self):
-        """Tableau à deux colonnes : intitulé à gauche, valeur à droite."""
+        """Crée le tableau des statistiques : intitulé à gauche, valeur à droite.
+
+        Les étiquettes des valeurs sont gardées dans self.labels_statistiques
+        pour être mises à jour par actualiser_statistiques().
+
+        Returns:
+            QGroupBox: le cadre « STATISTIQUES ».
+        """
         section = QGroupBox("STATISTIQUES")
         grille = QGridLayout()
         self.labels_statistiques = {}
@@ -190,6 +236,11 @@ class FenetrePrincipale(QMainWindow):
         return section
 
     def creer_section_legende(self):
+        """Crée la légende des couleurs (pastille colorée + explication).
+
+        Returns:
+            QGroupBox: le cadre « LÉGENDE ».
+        """
         section = QGroupBox("LÉGENDE")
         layout = QVBoxLayout()
         for couleur, texte in LEGENDE:
@@ -205,7 +256,16 @@ class FenetrePrincipale(QMainWindow):
         return section
 
     def demander_choix(self, titre, question, choix):
-        """Liste déroulante dans une boîte de dialogue. Renvoie None si on annule."""
+        """Affiche une boîte de dialogue avec une liste déroulante.
+
+        Args:
+            titre (str): titre de la boîte de dialogue.
+            question (str): texte affiché au-dessus de la liste.
+            choix (list[str]): éléments proposés.
+
+        Returns:
+            str | None: l'élément choisi, ou None si l'utilisateur annule.
+        """
         valeur, valide = QInputDialog.getItem(self, titre, question, choix, 0, False)
         return valeur if valide else None
 
@@ -216,6 +276,13 @@ class FenetrePrincipale(QMainWindow):
 
         On trie les routes selon leur angle autour du carrefour : la 1re et la 3e
         sont alors face à face, de même que la 2e et la 4e.
+
+        Args:
+            noeud (str): nom du carrefour.
+
+        Returns:
+            list[list[str]] | None: [[voisins de la phase 0], [voisins de la phase 1]],
+            ou None si le carrefour n'a pas exactement 4 routes.
         """
         routes = list(self.graphe.aretes.get(noeud, {}))
         if len(routes) != 4:
@@ -228,7 +295,7 @@ class FenetrePrincipale(QMainWindow):
         return [[routes[0], routes[2]], [routes[1], routes[3]]]
 
     def configurer_feu(self):
-        """Bouton « Ajouter un feu »."""
+        """Bouton « Ajouter un feu » : demande un carrefour et y installe un feu à deux phases."""
         noeud = self.demander_choix("Ajouter un feu", "Choisissez le carrefour :", list(self.graphe.noeuds))
         if noeud is None:
             return
@@ -240,18 +307,19 @@ class FenetrePrincipale(QMainWindow):
         self.statusBar().showMessage(f"Feu ajouté au carrefour {noeud}", 3000)
 
     def changer_feux(self):
-        """Toutes les 5 s : tous les feux changent de phase en même temps."""
+        """Appelée toutes les 5 s : tous les feux changent de phase en même temps."""
         self.feu_vert = not self.feu_vert
         self.mettre_a_jour_feux()
 
     def mettre_a_jour_feux(self):
+        """Applique la phase commune (self.feu_vert) à tous les feux, puis les recolore."""
         phase = 0 if self.feu_vert else 1
         for noeud in self.scene.feux:
             self.graphe.changer_phase(noeud, phase)
         self.colorer_feux()
 
     def colorer_feux(self):
-        """Pastille verte si sa route fait partie de la phase active, rouge sinon."""
+        """Colore chaque pastille : verte si sa route fait partie de la phase active, rouge sinon."""
         for noeud, pastilles in self.scene.feux.items():
             phase_active = self.graphe.noeuds[noeud]["phase_active"]
             for feu in pastilles.values():
@@ -261,6 +329,7 @@ class FenetrePrincipale(QMainWindow):
     # ==================== 3. Graphe de test ====================
 
     def reinitialiser_compteurs(self):
+        """Remet à zéro les compteurs utilisés par les statistiques et le temps de simulation."""
         self.vehicules_arrives = 0
         self.temps_actif = 0.0              # temps de simulation sans les pauses (s)
         self.dernier_instant = None
@@ -285,7 +354,8 @@ class FenetrePrincipale(QMainWindow):
         self.statusBar().showMessage("Tableau vidé", 3000)
 
     def creer_graphe_test(self):
-        """Vide le tableau, construit le réseau de graphe_test.py et ajoute les véhicules."""
+        """Bouton « Graphe de test » : vide le tableau, construit le réseau de démonstration
+        (graphe_test.py) et ajoute autant de véhicules que la densité choisie."""
         self.reinitialiser()
         self.nombre_vehicules_voulu = DENSITES_TEST[self.combo_densite.currentText()]
 
@@ -309,10 +379,19 @@ class FenetrePrincipale(QMainWindow):
     # ==================== 4. Création et sélection des véhicules ====================
 
     def ajouter_vehicule(self, depart, destination, est_urgent=False, afficher_erreur=True):
-        """Crée un véhicule (modèle + rectangle dessiné). Renvoie None si pas de chemin.
+        """Crée un véhicule : son modèle (chemin Dijkstra) et son rectangle dessiné.
 
         La vitesse n'est pas choisie : elle suit le code de la route
         (limitation pour tous, vitesse plus élevée pour les prioritaires).
+
+        Args:
+            depart (str): nœud de départ.
+            destination (str): nœud d'arrivée.
+            est_urgent (bool): True pour un véhicule prioritaire (gyrophare, plus rapide).
+            afficher_erreur (bool): affiche une boîte d'erreur si aucun chemin n'existe.
+
+        Returns:
+            Vehicule | None: le véhicule créé, ou None si aucun chemin ne relie les deux nœuds.
         """
         vitesse = VITESSE_PRIORITAIRE if est_urgent else VITESSE_LIMITE
         try:
@@ -344,10 +423,16 @@ class FenetrePrincipale(QMainWindow):
         return vehicule
 
     def creer_gyrophare(self, carrosserie):
-        """Rampe lumineuse sur le toit : une lampe bleue et une lampe rouge, chacune avec un halo.
+        """Crée la rampe lumineuse d'un véhicule prioritaire : une lampe bleue et une
+        lampe rouge, chacune entourée d'un halo transparent.
 
-        Ce sont des « enfants » de la carrosserie : ils bougent et tournent avec elle.
-        Renvoie une liste de (lampe, halo, couleur).
+        Les éléments sont des « enfants » de la carrosserie : ils bougent et tournent avec elle.
+
+        Args:
+            carrosserie (QGraphicsRectItem): rectangle du véhicule prioritaire.
+
+        Returns:
+            list[tuple]: deux tuples (lampe, halo, couleur), la lampe bleue puis la rouge.
         """
         lampes = []
         for couleur, x in (("#1e6bff", -7), ("#ff2020", 2)):
@@ -363,14 +448,19 @@ class FenetrePrincipale(QMainWindow):
         return lampes
 
     def creer_vehicule_aleatoire(self):
-        """Véhicule normal entre deux nœuds différents tirés au hasard."""
+        """Crée un véhicule normal entre deux nœuds différents tirés au hasard.
+
+        Returns:
+            Vehicule | None: le véhicule créé, ou None s'il y a moins de deux nœuds
+            ou si aucun chemin ne relie les nœuds tirés.
+        """
         if len(self.graphe.noeuds) < 2:
             return None
         depart, destination = random.sample(list(self.graphe.noeuds), 2)
         return self.ajouter_vehicule(depart, destination, afficher_erreur=False)
 
     def creer_vehicule(self):
-        """Bouton « Créer véhicule » : on demande les paramètres un par un."""
+        """Bouton « Créer véhicule » : demande le départ, la destination et le type, puis crée le véhicule."""
         noeuds = list(self.graphe.noeuds)
         if len(noeuds) < 2:
             QMessageBox.warning(self, "Erreur", "Créez d'abord au moins deux nœuds reliés par une route.")
@@ -393,7 +483,11 @@ class FenetrePrincipale(QMainWindow):
             self.statusBar().showMessage("Véhicule prioritaire créé" if est_urgent else "Véhicule créé", 3000)
 
     def selectionner_vehicule(self, vehicule):
-        """Clic sur un véhicule : son chemin passe en orange. Second clic : on annule."""
+        """Colore en orange le chemin Dijkstra du véhicule cliqué ; un second clic annule.
+
+        Args:
+            vehicule (Vehicule): véhicule sur lequel l'utilisateur a cliqué.
+        """
         deja_selectionne = vehicule == self.vehicule_selectionne
         self.deselectionner_vehicule()
         if deja_selectionne:
@@ -409,13 +503,19 @@ class FenetrePrincipale(QMainWindow):
                 ligne.setPen(pen)
 
     def deselectionner_vehicule(self):
+        """Rend aux routes surlignées leur style d'origine et annule la sélection."""
         for ligne, pen in self.styles_avant_selection.items():
             ligne.setPen(pen)
         self.styles_avant_selection = {}
         self.vehicule_selectionne = None
 
     def changer_gyrophare(self, inverser=True):
-        """Toutes les 150 ms : la lampe bleue et la lampe rouge s'allument à tour de rôle."""
+        """Appelée toutes les 150 ms : la lampe bleue et la lampe rouge s'allument à tour de rôle.
+
+        Args:
+            inverser (bool): True pour passer à l'autre lampe ; False pour seulement
+                appliquer l'état actuel (utile pour un véhicule qui vient d'être créé).
+        """
         if inverser:
             self.gyrophare_bleu_actif = not self.gyrophare_bleu_actif
         for lampes in self.gyrophares.values():
@@ -428,6 +528,7 @@ class FenetrePrincipale(QMainWindow):
     # ==================== 5. Démarrage / pause et temps ====================
 
     def demarrer_pause(self):
+        """Bouton « Démarrer / Pause » : lance ou arrête les minuteries de la simulation."""
         if self.simulation_active:
             self.actualiser_temps_actif()
             self.simulation_active = False
@@ -445,7 +546,7 @@ class FenetrePrincipale(QMainWindow):
             self.statusBar().showMessage("Simulation démarrée", 3000)
 
     def actualiser_temps_actif(self):
-        """Ajoute le temps écoulé depuis la dernière mise à jour.
+        """Ajoute au temps de simulation le temps écoulé depuis la dernière mise à jour.
 
         time.monotonic() est une horloge qui ne recule jamais : idéale pour les durées.
         """
@@ -454,6 +555,11 @@ class FenetrePrincipale(QMainWindow):
         self.dernier_instant = maintenant
 
     def obtenir_temps_actif(self):
+        """Calcule le temps de simulation écoulé, pauses exclues, sans modifier le compteur.
+
+        Returns:
+            float: temps de simulation active, en secondes.
+        """
         if self.simulation_active:
             return self.temps_actif + time.monotonic() - self.dernier_instant
         return self.temps_actif
@@ -461,7 +567,11 @@ class FenetrePrincipale(QMainWindow):
     # ==================== 6. Statistiques et envoi réseau ====================
 
     def obtenir_statistiques(self):
-        """Relevé utilisé à la fois par l'affichage et par l'envoi au serveur."""
+        """Construit le relevé utilisé à la fois par l'affichage et par l'envoi au serveur.
+
+        Returns:
+            dict: le champ "type" ("statistiques") et les six mesures.
+        """
         temps_moyen = self.temps_total_trajets / self.nombre_trajets if self.nombre_trajets else 0.0
         return {
             "type": "statistiques",  # permet au serveur de reconnaître le message
@@ -474,6 +584,11 @@ class FenetrePrincipale(QMainWindow):
         }
 
     def actualiser_statistiques(self):
+        """Recalcule les statistiques et les affiche dans le panneau latéral.
+
+        Returns:
+            dict: le relevé calculé (voir obtenir_statistiques).
+        """
         statistiques = self.obtenir_statistiques()
         for cle, label in self.labels_statistiques.items():
             label.setText(str(statistiques[cle]))
@@ -481,7 +596,10 @@ class FenetrePrincipale(QMainWindow):
         return statistiques
 
     def envoyer_statistiques(self):
-        """Toutes les 5 s : envoie le relevé au serveur sans bloquer l'interface."""
+        """Appelée toutes les 5 s : envoie le relevé au serveur sans bloquer l'interface.
+
+        Si l'envoi précédent n'est pas terminé (verrou pris), ce relevé est ignoré.
+        """
         message = json.dumps(self.actualiser_statistiques())  # dictionnaire -> texte JSON
         # Si l'envoi précédent n'est pas fini, on saute ce relevé.
         # acquire(blocking=False) renvoie False tout de suite au lieu d'attendre.
@@ -492,6 +610,13 @@ class FenetrePrincipale(QMainWindow):
         threading.Thread(target=self.envoyer_dans_un_thread, args=(message,), daemon=True).start()
 
     def envoyer_dans_un_thread(self, message):
+        """Envoie le message au serveur (exécuté dans un thread séparé), puis libère le verrou.
+
+        Une erreur réseau est seulement affichée : la simulation continue.
+
+        Args:
+            message (str): relevé au format JSON.
+        """
         try:
             envoyer_message(message, timeout=3)
         except OSError as erreur:
@@ -503,20 +628,43 @@ class FenetrePrincipale(QMainWindow):
     # ==================== 7. Règles de circulation ====================
 
     def longueur_route(self, vehicule):
+        """Calcule la longueur à l'écran de la route sur laquelle roule le véhicule.
+
+        Args:
+            vehicule (Vehicule): véhicule concerné.
+
+        Returns:
+            float: longueur en pixels.
+        """
         x1, y1 = self.scene.positions[vehicule.depart]
         x2, y2 = self.scene.positions[vehicule.arrivee]
         return math.hypot(x2 - x1, y2 - y1)
 
     def ligne_arret(self, longueur):
-        """Avancement (0 à 1) de la ligne d'arrêt : 28 px avant le carrefour,
-        ou au milieu de la route si elle est très courte."""
+        """Calcule la position de la ligne d'arrêt d'un feu sur une route.
+
+        Elle se trouve 28 px avant le carrefour, ou au milieu si la route est très courte.
+
+        Args:
+            longueur (float): longueur de la route en pixels (non nulle).
+
+        Returns:
+            float: avancement de la ligne d'arrêt, entre 0 et 1.
+        """
         return 1 - min(ARRET_FEU_PIXELS, longueur * 0.5) / longueur
 
     def est_devant(self, autre, vehicule):
-        """Vrai si `autre` roule devant `vehicule`, sur la même route et dans le même sens.
+        """Indique si `autre` roule devant `vehicule`, sur la même route et dans le même sens.
 
         À égalité d'avancement, le plus ancien est devant (sinon deux véhicules
         pourraient se bloquer l'un l'autre).
+
+        Args:
+            autre (Vehicule): véhicule dont on teste la position.
+            vehicule (Vehicule): véhicule de référence.
+
+        Returns:
+            bool: True si `autre` est devant `vehicule`.
         """
         if autre is vehicule or (autre.depart, autre.arrivee) != (vehicule.depart, vehicule.arrivee):
             return False
@@ -525,20 +673,44 @@ class FenetrePrincipale(QMainWindow):
         return autre.numero < vehicule.numero
 
     def feu_rouge_devant(self, vehicule):
-        """Le feu au bout de la route est-il rouge pour ce véhicule ?
+        """Indique si le feu au bout de la route est rouge pour ce véhicule.
 
         Sur la dernière route, il ne traverse pas le carrefour : le feu ne compte pas.
+
+        Args:
+            vehicule (Vehicule): véhicule concerné.
+
+        Returns:
+            bool: True si le véhicule doit s'arrêter au feu.
         """
         if vehicule.est_sur_derniere_route():
             return False
         return not self.graphe.est_vert(vehicule.arrivee, vehicule.depart)
 
     def attend_au_feu(self, vehicule):
+        """Indique si le véhicule est arrêté au bout de sa route devant un feu rouge.
+
+        Args:
+            vehicule (Vehicule): véhicule concerné.
+
+        Returns:
+            bool: True s'il attend au feu rouge.
+        """
         return vehicule.avancement >= 1 and self.feu_rouge_devant(vehicule)
 
     def laisse_passer(self, vehicule, prioritaire):
-        """Un véhicule normal se range sur le côté si un prioritaire arrive derrière lui,
-        sur la même route et dans le même sens, à moins de DISTANCE_LAISSER_PASSER pixels."""
+        """Indique si un véhicule normal doit se ranger sur le côté pour un prioritaire.
+
+        C'est le cas si le prioritaire arrive derrière lui, sur la même route et dans
+        le même sens, à moins de DISTANCE_LAISSER_PASSER pixels.
+
+        Args:
+            vehicule (Vehicule): véhicule qui pourrait devoir se ranger.
+            prioritaire (Vehicule): véhicule qui pourrait être prioritaire.
+
+        Returns:
+            bool: True si `vehicule` doit laisser passer `prioritaire`.
+        """
         if vehicule.est_urgent or not prioritaire.est_urgent:
             return False
         if (vehicule.depart, vehicule.arrivee) != (prioritaire.depart, prioritaire.arrivee):
@@ -548,11 +720,26 @@ class FenetrePrincipale(QMainWindow):
         return 0 < ecart < DISTANCE_LAISSER_PASSER
 
     def doit_s_ecarter(self, vehicule):
+        """Indique si au moins un véhicule prioritaire arrive juste derrière ce véhicule.
+
+        Args:
+            vehicule (Vehicule): véhicule concerné.
+
+        Returns:
+            bool: True s'il doit se ranger sur le côté et s'arrêter.
+        """
         # any(...) : vrai si au moins un véhicule vérifie la condition.
         return any(self.laisse_passer(vehicule, autre) for autre in self.vehicules)
 
     def est_bloque(self, vehicule):
-        """Vrai si un véhicule devant est trop proche (distance de sécurité)."""
+        """Indique si un véhicule devant est trop proche (distance de sécurité).
+
+        Args:
+            vehicule (Vehicule): véhicule concerné.
+
+        Returns:
+            bool: True si le véhicule ne doit pas avancer pendant ce tick.
+        """
         longueur = self.longueur_route(vehicule)
         if longueur == 0:
             return False
@@ -573,14 +760,27 @@ class FenetrePrincipale(QMainWindow):
         return False
 
     def est_dans_un_bouchon(self, vehicule):
-        """Bloqué par un autre véhicule, hors attente au feu et hors « laisser passer »."""
+        """Indique si le véhicule est bloqué par un autre (statistique « bouchon »).
+
+        Ne compte pas les véhicules arrêtés au feu ni ceux qui se rangent pour un prioritaire.
+
+        Args:
+            vehicule (Vehicule): véhicule concerné.
+
+        Returns:
+            bool: True s'il est dans un bouchon.
+        """
         return (not self.attend_au_feu(vehicule) and not self.doit_s_ecarter(vehicule)
                 and self.est_bloque(vehicule))
 
     # ==================== 8. Affichage des véhicules ====================
 
     def placer_vehicule(self, vehicule):
-        """Calcule où dessiner le véhicule : sur sa route, sur sa voie, bien orienté."""
+        """Place le rectangle du véhicule à l'écran : sur sa route, sur sa voie, bien orienté.
+
+        Args:
+            vehicule (Vehicule): véhicule à placer.
+        """
         x1, y1 = self.scene.positions[vehicule.depart]
         x2, y2 = self.scene.positions[vehicule.arrivee]
         longueur = math.hypot(x2 - x1, y2 - y1)
@@ -613,12 +813,18 @@ class FenetrePrincipale(QMainWindow):
         vehicule.graphique.setPos(x, y)
 
     def mettre_a_jour_positions_vehicules(self):
+        """Replace tous les véhicules à l'écran (utilisé quand on déplace un nœud)."""
         for vehicule in self.vehicules:
             self.placer_vehicule(vehicule)
 
     # ==================== 9. Boucle de simulation (toutes les 20 ms) ====================
 
     def tick(self):
+        """Appelée toutes les 20 ms : fait avancer tous les véhicules d'un pas.
+
+        Retire les véhicules arrivés, en recrée pour garder la densité,
+        puis met à jour les feux et les statistiques affichées.
+        """
         self.actualiser_temps_actif()
         encore_en_route = []
         for vehicule in self.vehicules:
@@ -649,6 +855,11 @@ class FenetrePrincipale(QMainWindow):
         self.actualiser_statistiques()
 
     def retirer_vehicule_arrive(self, vehicule):
+        """Retire un véhicule arrivé à destination et met à jour les compteurs de trajets.
+
+        Args:
+            vehicule (Vehicule): véhicule qui vient d'arriver.
+        """
         self.vehicules_arrives += 1
         self.temps_total_trajets += self.temps_actif - vehicule.debut_trajet
         self.nombre_trajets += 1
