@@ -1,13 +1,16 @@
 """Client TCP : envoie un message texte (ici un relevé JSON) au serveur Debian.
 
 Utilisé par interface.py. On peut aussi le lancer seul pour tester la connexion :
-    python reseau\\client.py
+    python reseau\\client.py      (Windows)
+    python3 reseau/client.py     (Debian)
 """
 
 import os
 import socket
 
-# Adresse de la VM, réglable dans PowerShell : $env:NAMEKS_SERVER_HOST = "192.168.1.50"
+# Adresse de la VM serveur, réglable sans modifier le code :
+#   PowerShell (Windows) : $env:NAMEKS_SERVER_HOST = "192.168.1.50"
+#   Terminal (Debian)    : export NAMEKS_SERVER_HOST=192.168.1.50
 ADRESSE_SERVEUR = os.environ.get("NAMEKS_SERVER_HOST", "").strip() or "10.128.238.191"
 PORT = 5000
 
@@ -22,7 +25,7 @@ def envoyer_message(message, timeout=5):
 
 if __name__ == "__main__":
     try:
-        envoyer_message("Bonjour depuis Windows !")
+        envoyer_message("Bonjour depuis le client Les_Nameks !")
         print("Message envoyé avec succès.")
     except OSError as erreur:
         print(f"Connexion impossible à {ADRESSE_SERVEUR}:{PORT} : {erreur}")

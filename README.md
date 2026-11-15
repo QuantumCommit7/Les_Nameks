@@ -1,6 +1,6 @@
 # Les_Nameks — guide de déploiement
 
-Ce guide permet à un groupe qui découvre le projet de lancer le simulateur sous Windows, puis d'enregistrer ses statistiques sur une VM Debian. **Suivez les étapes dans l'ordre, sans en sauter.** Chaque étape se termine par un résultat attendu : ne passez à la suivante que lorsque vous l'avez obtenu.
+Ce guide permet à un groupe qui découvre le projet de lancer le simulateur, puis d'enregistrer ses statistiques sur une VM Debian. **Suivez les étapes dans l'ordre, sans en sauter.** Chaque étape se termine par un résultat attendu : ne passez à la suivante que lorsque vous l'avez obtenu.
 
 ## Ce que fait le projet
 
@@ -8,7 +8,18 @@ Les_Nameks est un simulateur pédagogique de circulation routière. L'applicatio
 
 Les composants réseau sont simples : le client ouvre une connexion TCP au serveur sur le port `5000`, envoie un objet JSON UTF-8 terminé par un saut de ligne, puis ferme la connexion. Des threads évitent de bloquer l'interface et permettent au serveur de traiter plusieurs clients. MariaDB n'est utilisée que par le serveur sur la VM, via PyMySQL. Ce service scolaire n'est pas conçu pour être exposé sur Internet.
 
-## Vue d'ensemble du déploiement
+## Choisir votre configuration
+
+Le projet a deux parties : **l'application** (le simulateur avec sa fenêtre) et **le serveur** (qui enregistre les statistiques dans MariaDB). Le serveur est toujours sur une VM Debian ; l'application peut être sur Windows ou sur une seconde VM Debian.
+
+| Configuration | Application | Serveur | Suivre |
+| --- | --- | --- | --- |
+| **A** | PC Windows | VM Debian | Les étapes 1 à 6 ci-dessous |
+| **B** | VM Debian (avec bureau graphique) | Une seconde VM Debian | La [Variante B — deux VM Debian](#variante-b--deux-vm-debian-sans-zip), plus bas |
+
+Si l'enseignant impose deux VM, ou s'il n'y a pas de fichier ZIP, choisissez la configuration B.
+
+## Vue d'ensemble du déploiement (configuration A)
 
 | Étape | Où | Ce que l'on obtient |
 | --- | --- | --- |
@@ -24,7 +35,7 @@ L'application Windows fonctionne seule : les étapes 1 et 2 suffisent pour voir 
 ## Fichiers utiles
 
 - `application/` : interface et simulation PyQt6. `interface.py` est le point de lancement.
-- `reseau/client.py` et `reseau/serveur.py` : client Windows et serveur Debian.
+- `reseau/client.py` et `reseau/serveur.py` : client (côté application) et serveur (côté VM Debian).
 - `deploiement_debian/` : script d'installation, fichiers SQL, `.env.example`, test de connexion et [guide Debian détaillé](deploiement_debian/README.md).
 - `requirements.txt` : dépendances Python de l'application Windows.
 
@@ -130,6 +141,8 @@ Tant que le serveur Debian n'est pas installé, le terminal affiche toutes les 5
 
 Toute la partie Debian est décrite dans **[`deploiement_debian/README.md`](deploiement_debian/README.md)**. Suivez ce guide **de la section 0 à la section 8, dans l'ordre**, puis revenez ici.
 
+Sa **section 1** explique pas à pas comment envoyer le projet de ce PC Windows vers la VM, même si la VM tourne sur un autre PC : mise en réseau de la VM, activation de SSH, puis envoi du ZIP depuis PowerShell avec `scp`.
+
 Ne lancez pas le serveur avant d'avoir créé le compte MariaDB et le fichier `.env` (sections 4 et 5 du guide) : sans `.env`, le serveur refuse de démarrer et affiche `Configuration MariaDB impossible à lire`.
 
 **Liste de contrôle à la fin du guide Debian :**
@@ -147,10 +160,11 @@ Windows doit pouvoir joindre le port TCP `5000` de la VM. C'est l'étape qui pos
 
 Dans VirtualBox, VM arrêtée ou non : **Configuration → Réseau → Carte 1 → Mode d'accès réseau**.
 
-- **Accès par pont** (recommandé) : la VM obtient une adresse du réseau de la salle, du type `192.168.x.x` ou `10.x.x.x`, directement joignable depuis Windows. Utilisez cette adresse ci-dessous.
-- **NAT** (mode par défaut de VirtualBox) : Windows **ne peut pas** joindre la VM directement (son adresse est souvent `10.0.2.15`). Deux solutions :
-  - passer en **Accès par pont**, puis redémarrer le réseau de la VM (ou la VM) et relever la nouvelle adresse ;
-  - ou garder NAT et ajouter une redirection : **Avancé → Redirection de ports → +**, protocole `TCP`, port hôte `5000`, port invité `5000`. Dans ce cas, l'adresse à utiliser depuis Windows est `127.0.0.1`.
+Si vous avez envoyé le projet avec `scp` (section 1 du guide Debian), la VM est déjà en **Accès par pont** et joignable : utilisez ci-dessous **la même adresse** que pour `scp`, et passez à l'étape 4.2.
+
+- **Accès par pont** (recommandé, et obligatoire si la VM tourne sur un autre PC) : la VM obtient une adresse du réseau de la salle, du type `192.168.x.x` ou `10.x.x.x`, directement joignable depuis les autres postes. Utilisez cette adresse ci-dessous.
+- **NAT** (mode par défaut de VirtualBox) : la VM n'est **pas joignable** depuis un autre poste (son adresse est souvent `10.0.2.15`). Passez en **Accès par pont**, redémarrez la VM et relevez la nouvelle adresse.
+  - Cas particulier, seulement si l'application et la VM sont sur **le même PC** : on peut garder NAT et ajouter une redirection (**Avancé → Redirection de ports → +**, protocole `TCP`, port hôte `5000`, port invité `5000`), puis utiliser l'adresse `127.0.0.1`.
 
 Avec VMware, l'équivalent est le mode **Bridged**. Si le mode réseau est imposé par la salle, demandez à l'enseignant lequel utiliser.
 
@@ -163,7 +177,7 @@ $env:NAMEKS_SERVER_HOST = "192.168.1.50"
 Test-NetConnection -ComputerName $env:NAMEKS_SERVER_HOST -Port 5000
 ```
 
-Remplacez `192.168.1.50` par l'adresse de la VM (ou par `127.0.0.1` si vous utilisez la redirection NAT).
+Remplacez `192.168.1.50` par l'adresse de la VM (ou par `127.0.0.1` dans le cas particulier de la redirection NAT sur le même PC).
 
 **Résultat attendu :** `TcpTestSucceeded : True`.
 
@@ -195,9 +209,182 @@ Si aucune ligne n'apparaît, lisez les messages du terminal serveur, confirmez `
 
 ---
 
+## Variante B — Deux VM Debian, sans ZIP
+
+Cette partie remplace les étapes 1 à 6 quand **l'application et le serveur tournent chacun sur une VM Debian**. Dans les exemples :
+
+| VM | Rôle | Adresse d'exemple |
+| --- | --- | --- |
+| **VM-APP** | lance le simulateur (fenêtre PyQt6) | `192.168.1.60` |
+| **VM-SERVEUR** | serveur TCP + MariaDB | `192.168.1.50` |
+
+```text
+   VM-APP (Debian + bureau)                      VM-SERVEUR (Debian)
+   ┌──────────────────────────┐   TCP port 5000   ┌──────────────────────────┐
+   │ application/interface.py ├──────────────────►│ reseau/serveur.py        │
+   │ reseau/client.py         │   relevés JSON    │ MariaDB (locale)         │
+   └──────────────────────────┘                   └──────────────────────────┘
+```
+
+Remplacez partout les adresses d'exemple par les vôtres, et `etudiant` par votre nom d'utilisateur Debian.
+
+### B.1 Préparer les deux VM (sur chacune)
+
+1. **Réseau** : dans VirtualBox, **Configuration → Réseau → Carte 1 → Accès par pont**, comme à la [section 1.1 du guide Debian](deploiement_debian/README.md#11-mettre-la-vm-sur-le-réseau-de-la-salle-sur-le-pc-2). Les deux VM obtiennent ainsi une adresse sur le réseau de la salle et peuvent se joindre, qu'elles tournent sur le même PC ou sur deux PC différents.
+2. **`sudo`** : vérifiez qu'il fonctionne ([section 0 du guide Debian](deploiement_debian/README.md#0-vérifier-que-sudo-fonctionne)).
+3. **SSH et adresse** : dans un terminal de la VM :
+
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y openssh-server
+   sudo systemctl enable --now ssh
+   ip -4 -brief address
+   whoami
+   ```
+
+   Notez l'adresse de la VM (ligne qui n'est pas `lo`) et le nom d'utilisateur.
+
+4. **Sur VM-APP uniquement, un bureau graphique est obligatoire** : le simulateur est une fenêtre. Si la VM démarre seulement sur un écran noir en mode texte, installez un bureau léger puis redémarrez (téléchargement d'environ 1 Go) :
+
+   ```bash
+   sudo apt-get install -y task-xfce-desktop
+   sudo reboot
+   ```
+
+### B.2 Copier le projet sur les deux VM, sans ZIP
+
+Le projet doit arriver dans `~/Les_Nameks` sur **chacune** des deux VM. Choisissez la méthode qui correspond à l'endroit où se trouve le projet.
+
+**Méthode 1 — le dossier du projet est sur un PC Windows** (PowerShell sur ce PC). Pour chaque VM, créez le dossier de destination, puis copiez-y les fichiers utiles :
+
+```powershell
+ssh etudiant@192.168.1.50 "mkdir -p ~/Les_Nameks"
+scp -r C:\Les_Nameks\application C:\Les_Nameks\reseau C:\Les_Nameks\deploiement_debian C:\Les_Nameks\README.md C:\Les_Nameks\requirements.txt etudiant@192.168.1.50:~/Les_Nameks/
+```
+
+Refaites les deux commandes avec l'adresse de l'autre VM (`192.168.1.60`). Le mot de passe Debian est demandé à chaque commande, et `yes` à la toute première connexion (voir la [section 1.4 du guide Debian](deploiement_debian/README.md#14-envoyer-le-zip-powershell-pc-1) pour le détail de ce qui s'affiche). On liste les dossiers un par un pour **ne pas copier** un éventuel dossier `.venv` de Windows, inutile et très lourd.
+
+**Méthode 2 — le projet est déjà sur l'une des VM** : copiez-le vers l'autre, depuis un terminal de la VM qui l'a :
+
+```bash
+scp -r ~/Les_Nameks etudiant@192.168.1.50:~/
+```
+
+**Méthode 3 — avec Git**, si le groupe a accès au dépôt GitHub du projet :
+
+```bash
+sudo apt-get install -y git
+git clone https://github.com/QuantumCommit7/Les_Nameks.git ~/Les_Nameks
+```
+
+Si le dépôt est privé, GitHub demande un nom d'utilisateur et un **jeton d'accès** (pas le mot de passe du compte) : demandez au propriétaire du dépôt de vous ajouter comme collaborateur ou d'utiliser plutôt la méthode 1 ou 2.
+
+**Vérification, sur chaque VM :**
+
+```bash
+ls ~/Les_Nameks
+```
+
+**Résultat attendu :** `application`, `reseau`, `deploiement_debian` et `README.md` apparaissent.
+
+### B.3 Installer le serveur (VM-SERVEUR)
+
+Suivez le [guide Debian](deploiement_debian/README.md) **sections 0 et 2 à 8** : la section 1 (envoi du ZIP) est remplacée par l'étape B.2. À la fin, le serveur affiche `Serveur en écoute sur 0.0.0.0:5000...` : laissez ce terminal ouvert.
+
+### B.4 Installer et lancer l'application (VM-APP)
+
+Ouvrez un terminal **dans le bureau graphique de VM-APP** (pas par `ssh` : une fenêtre ne peut pas s'afficher à travers une connexion SSH simple).
+
+**Installer PyQt6.** Vérifiez d'abord la version de Debian :
+
+```bash
+cat /etc/debian_version
+```
+
+- **Debian 12 ou plus récent** (le résultat commence par `12` ou `13`) : PyQt6 est fourni par Debian, une seule commande suffit.
+
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y python3-pyqt6
+  python3 -c "import PyQt6.QtWidgets; print('PyQt6 OK')"
+  ```
+
+  Résultat attendu : `PyQt6 OK`. Dans la suite, la commande pour lancer Python est `python3`.
+
+- **Debian 11** (le résultat commence par `11`) : le paquet `python3-pyqt6` n'existe pas. Installez PyQt6 dans un environnement virtuel :
+
+  ```bash
+  sudo apt-get install -y python3-venv libxcb-cursor0 libgl1 libegl1 libxkbcommon-x11-0
+  python3 -m venv ~/Les_Nameks/.venv
+  ~/Les_Nameks/.venv/bin/python -m pip install --upgrade pip
+  ~/Les_Nameks/.venv/bin/python -m pip install PyQt6
+  ```
+
+  Dans la suite, remplacez `python3` par `~/Les_Nameks/.venv/bin/python`.
+
+PyMySQL n'est pas nécessaire sur VM-APP : seule VM-SERVEUR parle à MariaDB.
+
+**Premier lancement, sans serveur :**
+
+```bash
+cd ~/Les_Nameks
+python3 application/interface.py
+```
+
+**Résultat attendu :** la fenêtre « Simulateur de trafic » s'ouvre ; **Graphe de test** puis **Démarrer** font circuler les véhicules. Le message `Envoi des statistiques impossible` dans le terminal est normal tant que l'étape B.5 n'est pas faite. Fermez la fenêtre.
+
+### B.5 Relier VM-APP à VM-SERVEUR
+
+Sur VM-APP, dans le terminal du bureau, indiquez l'adresse de VM-SERVEUR puis envoyez un message de test avec le client du projet :
+
+```bash
+cd ~/Les_Nameks
+export NAMEKS_SERVER_HOST=192.168.1.50
+python3 reseau/client.py
+```
+
+**Résultat attendu :** `Message envoyé avec succès.` sur VM-APP, et sur le terminal du serveur (VM-SERVEUR) : `Message texte reçu de 192.168.1.60 : Bonjour depuis le client Les_Nameks !`
+
+Si vous obtenez `Connexion impossible`, vérifiez que le serveur tourne, l'adresse de VM-SERVEUR, le mode « Accès par pont » des deux VM et, si un pare-feu est actif sur VM-SERVEUR, la [section 7 du guide Debian](deploiement_debian/README.md#7-trouver-ladresse-debian-et-préparer-le-réseau) (autorisez l'adresse de VM-APP).
+
+Lancez ensuite la simulation **dans ce même terminal** :
+
+```bash
+python3 application/interface.py
+```
+
+Cliquez sur **Graphe de test** puis **Démarrer**. Toutes les 5 secondes, le terminal du serveur affiche `Statistiques enregistrées dans MariaDB.`
+
+`export` ne vaut que pour le terminal courant. Pour ne plus avoir à le retaper, ajoutez-le une fois pour toutes à la configuration du terminal, puis ouvrez un nouveau terminal :
+
+```bash
+echo 'export NAMEKS_SERVER_HOST=192.168.1.50' >> ~/.bashrc
+```
+
+### B.6 Vérifier les statistiques (VM-SERVEUR)
+
+Comme à l'[étape 6](#étape-6--vérifier-les-six-statistiques-dans-mariadb-debian) :
+
+```bash
+sudo mariadb simulation_trafic -e "SELECT id, date_mesure, vehicules_actifs, vehicules_arrives, temps_moyen_trajet FROM statistiques ORDER BY id DESC LIMIT 5;"
+```
+
+### Problèmes propres à la variante B
+
+| Symptôme | Cause probable | Solution |
+| --- | --- | --- |
+| `E: Unable to locate package python3-pyqt6` | Debian 11 ou plus ancien. | Utiliser la méthode « Debian 11 » de l'étape B.4 (environnement virtuel). |
+| `ModuleNotFoundError: No module named 'PyQt6'` | PyQt6 non installé, ou lancé avec un autre Python que celui où il est installé. | Debian 12 : `sudo apt-get install -y python3-pyqt6`. Debian 11 : lancer avec `~/Les_Nameks/.venv/bin/python`. |
+| `qt.qpa.plugin: Could not load the Qt platform plugin "xcb"` | Bibliothèque graphique manquante (surtout avec l'installation par pip). | `sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libgl1 libegl1`. |
+| `could not connect to display` | Application lancée par `ssh` ou depuis une console sans bureau. | Lancer depuis un terminal ouvert **dans le bureau graphique** de VM-APP (étape B.1, point 4). |
+| `ssh: connect to host … Connection timed out` pendant la copie | Les VM ne se voient pas. | Vérifier l'Accès par pont des deux VM et leurs adresses (`ip -4 -brief address`). |
+| Le client envoie vers `10.128.238.191` | `NAMEKS_SERVER_HOST` n'est pas défini dans ce terminal. | Refaire `export NAMEKS_SERVER_HOST=…` dans le terminal qui lance l'application. |
+
+---
+
 ## Dépendances et limitations connues
 
-Les dépendances Python sont `PyQt6` et `PyMySQL` dans `requirements.txt`. Côté Debian, l'installateur fournit PyMySQL par le paquet système `python3-pymysql` ; la VM n'a pas besoin de PyQt6.
+Les dépendances Python sont `PyQt6` et `PyMySQL` dans `requirements.txt`. Côté Debian, l'installateur fournit PyMySQL par le paquet système `python3-pymysql` ; la VM serveur n'a pas besoin de PyQt6. Dans la variante B, la VM application utilise le paquet `python3-pyqt6` (Debian 12 et plus) ou PyQt6 installé par pip (Debian 11), et n'a pas besoin de PyMySQL.
 
 Les graphes ne sont pas enregistrés sur disque. Le client n'a pas de file de retransmission : les statistiques produites pendant une coupure réseau sont perdues. Le serveur écoute sur toutes les interfaces et ne fournit ni chiffrement ni authentification applicative : limitez son accès au réseau de TP de confiance.
 

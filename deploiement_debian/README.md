@@ -1,6 +1,6 @@
 # Déployer le serveur Les_Nameks sur Debian
 
-Ce guide installe le serveur TCP et MariaDB sur une VM Debian neuve à partir des fichiers du ZIP. Il ne nécessite ni Git ni accès au dépôt en ligne. **Exécutez les sections 0 à 8 dans l'ordre**, puis revenez à l'étape 4 du [README principal](../README.md). Les commandes sont à lancer dans un terminal Debian, sauf mention contraire.
+Ce guide installe le serveur TCP et MariaDB sur une VM Debian neuve à partir des fichiers du projet. Il ne nécessite ni Git ni accès au dépôt en ligne. Si l'application tourne elle aussi sur une VM Debian (deux VM, sans ZIP), suivez d'abord la [Variante B du README principal](../README.md#variante-b--deux-vm-debian-sans-zip) : elle vous renvoie ici pour les sections 0 et 2 à 8. **Exécutez les sections 0 à 8 dans l'ordre**, puis revenez à l'étape 4 du [README principal](../README.md). Les commandes sont à lancer dans un terminal Debian, sauf mention contraire.
 
 Le client Windows envoie des mesures au serveur Python sur le port TCP `5000`. Le serveur écrit les mesures dans MariaDB, qui reste locale à Debian sur `127.0.0.1:3306`. N'ouvrez pas le port `3306` au réseau.
 
@@ -27,29 +27,125 @@ exit
 
 `su -` demande le **mot de passe root** choisi pendant l'installation de Debian. Remplacez `etudiant` par votre nom d'utilisateur. **Fermez ensuite complètement votre session** (déconnexion, ou redémarrage de la VM) et reconnectez-vous : le nouveau droit n'est pris en compte qu'à la connexion suivante. Refaites `sudo whoami` pour vérifier.
 
-## 1. Copier et repérer le projet
+## 1. Envoyer le projet du PC Windows vers la VM
 
-Le projet doit se trouver dans votre dossier personnel, sous le nom `Les_Nameks`.
+Situation de départ : le ZIP du projet est sur le **PC 1** (Windows, celui qui lancera l'application) et la VM Debian tourne sur le **PC 2**. On va copier le ZIP à travers le réseau avec la commande `scp`, déjà intégrée à Windows 10 et 11.
 
-- **Avec un dossier partagé** (VirtualBox, VMware) : copiez le dossier `Les_Nameks` du dossier partagé vers votre dossier personnel. Travaillez sur cette copie, pas directement dans le dossier partagé : les dossiers partagés gèrent mal les droits d'exécution et les environnements Python.
-- **Avec le ZIP copié sur Debian** : installez l'extracteur et décompressez-le dans votre dossier personnel :
+```text
+   PC 1 — Windows                                 PC 2 — héberge la VM
+   ┌────────────────────────┐                     ┌──────────────────────────┐
+   │ Les_Nameks.zip         │   réseau de la      │  VM Debian               │
+   │ PowerShell : scp ──────┼──── salle ─────────►│  serveur SSH (port 22)   │
+   └────────────────────────┘                     │  ~/Les_Nameks.zip        │
+                                                  └──────────────────────────┘
+```
 
-  ```bash
-  sudo apt-get update
-  sudo apt-get install -y unzip
-  unzip "$HOME/Les_Nameks.zip" -d "$HOME"
-  ```
+`scp` (*secure copy*) copie un fichier vers une autre machine en passant par SSH. Il faut donc que la VM soit **joignable par le réseau** et qu'un **serveur SSH** y tourne. Les étapes 1.1 et 1.2 préparent la VM, les étapes 1.3 à 1.5 se font depuis le PC 1.
 
-Vérifiez l'emplacement :
+> Si la VM tourne sur le **même PC** que le ZIP, vous pouvez aussi utiliser le dossier partagé de VirtualBox ou une clé USB, puis passer directement à l'étape 1.5. La méthode `scp` ci-dessous fonctionne dans tous les cas.
+>
+> **Pas de ZIP, ou deux VM Debian ?** Copiez directement le dossier du projet comme expliqué à l'[étape B.2 du README principal](../README.md#b2-copier-le-projet-sur-les-deux-vm-sans-zip), puis reprenez ce guide à la section 2.
+
+### 1.1 Mettre la VM sur le réseau de la salle (sur le PC 2)
+
+Dans VirtualBox, sur le PC 2 : sélectionnez la VM, puis **Configuration → Réseau → Carte 1** :
+
+- **Mode d'accès réseau** : `Accès par pont` ;
+- **Nom** : la carte réseau réelle du PC 2 (celle qui est branchée : Ethernet ou Wi-Fi).
+
+Validez, puis démarrez (ou redémarrez) la VM. En mode « Accès par pont », la VM obtient sa propre adresse sur le réseau de la salle, comme un vrai ordinateur : le PC 1 pourra la joindre pour `scp` maintenant, et pour le port `5000` du serveur plus tard.
+
+Avec VMware, l'équivalent est le mode **Bridged**. Si l'enseignant impose un autre mode réseau, demandez-lui comment joindre la VM depuis un autre poste.
+
+### 1.2 Activer SSH et relever l'adresse de la VM (terminal Debian)
+
+Dans un terminal de la VM :
 
 ```bash
-cd "$HOME/Les_Nameks"
+sudo apt-get update
+sudo apt-get install -y openssh-server unzip
+sudo systemctl enable --now ssh
+sudo systemctl is-active ssh
+ip -4 -brief address
+```
+
+**Résultat attendu :**
+- `sudo systemctl is-active ssh` affiche `active` ;
+- `ip -4 -brief address` affiche une ligne comme `enp0s3   UP   192.168.1.50/24`. **Notez cette adresse** (ici `192.168.1.50`, sans le `/24`). Ignorez la ligne `lo` (`127.0.0.1`).
+
+Si l'adresse est `10.0.2.15`, la VM est encore en mode NAT : revenez à l'étape 1.1.
+
+Notez aussi votre nom d'utilisateur Debian (commande `whoami`) et son mot de passe : `scp` les demandera.
+
+### 1.3 Vérifier que le PC 1 voit la VM (PowerShell, PC 1)
+
+Sur le PC 1, ouvrez PowerShell (menu Démarrer → « PowerShell ») et testez le port SSH de la VM, en remplaçant l'adresse par celle notée à l'étape 1.2 :
+
+```powershell
+Test-NetConnection -ComputerName 192.168.1.50 -Port 22
+```
+
+**Résultat attendu :** `TcpTestSucceeded : True`.
+
+Si le résultat est `False` : vérifiez l'adresse, que la VM est démarrée, que `ssh` est `active` (étape 1.2) et que les deux PC sont sur le même réseau de salle. Sur certains réseaux (Wi-Fi invité, réseau isolé), les postes ne peuvent pas se joindre : demandez à l'enseignant.
+
+### 1.4 Envoyer le ZIP (PowerShell, PC 1)
+
+Placez-vous dans le dossier qui contient `Les_Nameks.zip` (souvent `Téléchargements`), puis envoyez-le :
+
+```powershell
+cd $HOME\Downloads
+scp .\Les_Nameks.zip etudiant@192.168.1.50:~/
+```
+
+Décomposition de la commande :
+
+| Morceau | Signification |
+|---|---|
+| `.\Les_Nameks.zip` | le fichier à envoyer, dans le dossier courant |
+| `etudiant` | votre nom d'utilisateur **Debian** (pas celui de Windows) |
+| `192.168.1.50` | l'adresse de la VM notée à l'étape 1.2 |
+| `:~/` | la destination : le dossier personnel de cet utilisateur sur la VM |
+
+Ce qui va s'afficher :
+
+1. **À la première connexion seulement :** `Are you sure you want to continue connecting (yes/no/[fingerprint])?` → tapez `yes` puis Entrée. Windows mémorise ainsi l'identité de la VM.
+2. `etudiant@192.168.1.50's password:` → tapez le mot de passe Debian puis Entrée. **Rien ne s'affiche pendant la saisie, c'est normal.**
+3. Une ligne de progression se termine par `100%` : le fichier est arrivé.
+
+**Astuce :** si le ZIP est ailleurs, tapez `scp ` (avec un espace), **glissez le fichier ZIP depuis l'Explorateur dans la fenêtre PowerShell** (son chemin complet s'écrit tout seul), puis complétez avec ` etudiant@192.168.1.50:~/`.
+
+**Vous n'avez que le dossier `C:\Les_Nameks`, pas de ZIP ?** Créez-en un avec la commande `tar` intégrée à Windows, qui laisse de côté les dossiers inutiles (`.venv`, `__pycache__`), puis envoyez-le :
+
+```powershell
+tar -a -cf "$HOME\Desktop\Les_Nameks.zip" --exclude=.venv --exclude=__pycache__ -C C:\ Les_Nameks
+scp "$HOME\Desktop\Les_Nameks.zip" etudiant@192.168.1.50:~/
+```
+
+### 1.5 Extraire le projet (terminal Debian)
+
+Sur la VM :
+
+```bash
+cd ~
+unzip Les_Nameks.zip
+cd ~/Les_Nameks
 ls
 ```
 
-**Résultat attendu :** `README.md`, `reseau` et `deploiement_debian` apparaissent. Si `cd` échoue, regardez le nom réel du dossier avec `ls "$HOME"` et renommez-le, par exemple `mv "$HOME/Les_Nameks-main" "$HOME/Les_Nameks"`.
+**Résultat attendu :** `README.md`, `reseau` et `deploiement_debian` apparaissent. Si `cd ~/Les_Nameks` échoue, regardez le nom réel du dossier avec `ls ~` et renommez-le, par exemple `mv ~/Les_Nameks-main ~/Les_Nameks`.
 
-`scp` est une autre possibilité uniquement si Debian a un serveur SSH actif et si les deux machines peuvent communiquer. Pour un TP, le dossier partagé ou le transfert de fichiers de l'hyperviseur est souvent plus simple.
+**Envoyer une nouvelle version plus tard :** refaites l'étape 1.4, puis `cd ~ && unzip -o Les_Nameks.zip` (`-o` remplace les anciens fichiers sans poser de question). Votre fichier `deploiement_debian/.env` n'est pas dans le ZIP : il est conservé.
+
+### Astuce : piloter la VM depuis PowerShell
+
+Maintenant que SSH fonctionne, vous pouvez ouvrir un terminal Debian **directement dans PowerShell** sur le PC 1, et suivre la suite de ce guide sans aller sur le PC 2 :
+
+```powershell
+ssh etudiant@192.168.1.50
+```
+
+Toutes les commandes tapées ensuite s'exécutent sur la VM ; `exit` revient à Windows. Attention : si le serveur TCP (section 8) est lancé dans cette fenêtre, fermer la fenêtre arrête le serveur.
 
 ## 2. Installer les paquets système
 
@@ -188,7 +284,7 @@ ip -4 -brief address
 
 Relevez l'adresse de l'interface réseau (souvent `enp0s3`, `ens33` ou `eth0`), pas celle de `lo` (`127.0.0.1`). Notez-la : elle servira à l'étape 4 du README principal.
 
-**Mode réseau de la VM.** Si l'adresse est du type `10.0.2.15`, la VM est probablement en mode **NAT** (mode par défaut de VirtualBox) : Windows ne pourra pas la joindre directement. L'étape 4.1 du [README principal](../README.md) explique comment passer en **Accès par pont** ou ajouter une redirection du port 5000. Si vous changez le mode réseau, relevez à nouveau l'adresse avec la commande ci-dessus.
+**Mode réseau de la VM.** C'est la même adresse que celle utilisée pour `scp` à la section 1 : si l'envoi du ZIP a fonctionné, le PC Windows pourra aussi joindre le port 5000. Si l'adresse est du type `10.0.2.15`, la VM est en mode **NAT** et Windows ne pourra pas la joindre : repassez-la en **Accès par pont** (section 1.1), puis relevez à nouveau l'adresse avec la commande ci-dessus.
 
 **Pare-feu.** Une Debian neuve n'active pas de pare-feu par défaut. Si UFW est installé et actif (`sudo ufw status` affiche `Status: active`), autorisez uniquement la machine Windows vers le port 5000 :
 
@@ -278,6 +374,11 @@ Revérifiez les colonnes avec `SHOW COLUMNS`. La migration n'efface pas les lign
 | --- | --- | --- |
 | `is not in the sudoers file` | L'utilisateur n'a pas le droit d'utiliser `sudo`. | Section 0 : `su -`, `usermod -aG sudo etudiant`, puis se déconnecter et se reconnecter. |
 | `sudo: command not found` | Paquet sudo absent. | Section 0 : `su -` puis `apt-get install -y sudo`. |
+| `scp` ou `ssh` : `Connection timed out` | La VM n'est pas joignable : mode NAT, mauvaise adresse ou PC sur des réseaux différents. | Section 1.1 (Accès par pont) puis 1.2 (relever l'adresse) ; tester avec `Test-NetConnection -ComputerName <adresse> -Port 22`. |
+| `scp` ou `ssh` : `Connection refused` | La VM est joignable mais le serveur SSH ne tourne pas. | Sur la VM : `sudo systemctl enable --now ssh`, puis `sudo systemctl is-active ssh`. |
+| `Permission denied, please try again.` | Mauvais nom d'utilisateur ou mot de passe Debian. | Utiliser le nom affiché par `whoami` **sur la VM** et son mot de passe. Le compte `root` est refusé par SSH : utilisez votre utilisateur normal. |
+| `WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!` | La VM a été réinstallée ou l'adresse est réutilisée par une autre machine. | Sur le PC Windows : `ssh-keygen -R 192.168.1.50` (avec l'adresse de la VM), puis relancer `scp` et répondre `yes`. |
+| `scp : Le terme « scp » n'est pas reconnu…` | Client OpenSSH absent de Windows (rare). | Paramètres Windows → Système → Fonctionnalités facultatives → Ajouter une fonctionnalité → **Client OpenSSH**, puis rouvrir PowerShell. |
 | `cd: …/Les_Nameks: No such file or directory` | Dossier extrait sous un autre nom ou ailleurs. | `ls "$HOME"`, puis renommer le dossier en `Les_Nameks` (section 1). |
 | `$'\r': command not found` en lançant `installer.sh` | Le script a été enregistré avec des fins de ligne Windows. | `sed -i 's/\r$//' installer.sh`, puis relancer `bash installer.sh`. |
 | `python3: command not found` | Python absent ou PATH inhabituel. | `sudo apt-get install -y python3`. |
