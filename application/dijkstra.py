@@ -18,6 +18,7 @@ def dijkstra(graph, start, stop):
 
     L'algorithme suppose que les poids des routes sont non négatifs.
     """
+    # Cas particuliers traités avant l'algorithme.
     if start not in graph.noeuds or stop not in graph.noeuds:
         return None
 
@@ -25,6 +26,9 @@ def dijkstra(graph, start, stop):
         return [start]
 
     # Pour chaque nœud, mémoriser le meilleur coût connu et son précédent.
+    # Au début, seul le départ est à distance 0 ; les autres sont à l'infini.
+    # Exemple : detail["B"] = {"distance": 5, "precedent": "A", "traité": False}
+    # signifie « on sait aller en B pour un coût de 5, en passant par A ».
     detail = {}
     plus_proche = None
     for elt in graph.noeuds:
@@ -35,6 +39,7 @@ def dijkstra(graph, start, stop):
     while True:
         plus_proche = None
         # Choisir le nœud non traité dont la distance provisoire est la plus petite.
+        # (Recherche simple par parcours complet : suffisant pour quelques dizaines de nœuds.)
         for elt in detail:
             if detail[elt]["traité"] == True:
                 pass
@@ -43,14 +48,18 @@ def dijkstra(graph, start, stop):
                     plus_proche = elt
                 if detail[elt]["distance"] <= detail[plus_proche]["distance"]:
                     plus_proche = elt
+        # Plus aucun nœud à traiter.
         if plus_proche is None:
             break
 
+        # Les nœuds restants sont inaccessibles depuis le départ.
         if detail[plus_proche]["distance"] == inf:
             break
 
+        # La distance de ce nœud est maintenant définitive.
         detail[plus_proche]["traité"] = True
 
+        # Inutile de continuer : la destination a sa distance définitive.
         if plus_proche == stop:
             break
 
@@ -61,10 +70,12 @@ def dijkstra(graph, start, stop):
                 detail[voisin]["distance"] = distance
                 detail[voisin]["precedent"] = plus_proche
 
+    # La destination n'a jamais été atteinte : pas de chemin.
     if detail[stop]["distance"] == inf:
         return None
 
     # Reconstituer le trajet en remontant les précédents depuis l'arrivée.
+    # Exemple : H -> G -> B -> A, puis on inverse pour obtenir A, B, G, H.
     chemin = []
     actuel = stop
     while actuel != start:
