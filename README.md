@@ -361,6 +361,8 @@ Suivez le [guide Debian](deploiement_debian/README.md) **sections 0 et 2 à 8** 
 
 Ouvrez un terminal **dans le bureau graphique de VM-APP** (pas par `ssh` : une fenêtre ne peut pas s'afficher à travers une connexion SSH simple).
 
+> **Ne lancez pas l'application en `root`** (pas de `su` ni de `sudo` pour `python3 application/interface.py`) : root n'a pas accès à l'écran de l'utilisateur connecté et Qt affiche `could not connect to display`. L'invite du terminal doit montrer votre utilisateur (`etudiant@…`), pas `root@…`. Le projet doit aussi se trouver dans le dossier personnel de cet utilisateur (`/home/<utilisateur>/Les_Nameks`), pas dans `/root`.
+
 **Installer PyQt6.** Vérifiez d'abord la version de Debian :
 
 ```bash
@@ -371,7 +373,7 @@ cat /etc/debian_version
 
   ```bash
   sudo apt-get update
-  sudo apt-get install -y python3-pyqt6
+  sudo apt-get install -y python3-pyqt6 libxcb-cursor0
   python3 -c "import PyQt6.QtWidgets; print('PyQt6 OK')"
   ```
 
@@ -442,7 +444,7 @@ sudo mariadb simulation_trafic -e "SELECT id, date_mesure, vehicules_actifs, veh
 | `E: Unable to locate package python3-pyqt6` | Debian 11 ou plus ancien. | Utiliser la méthode « Debian 11 » de l'étape B.4 (environnement virtuel). |
 | `ModuleNotFoundError: No module named 'PyQt6'` | PyQt6 non installé, ou lancé avec un autre Python que celui où il est installé. | Debian 12 : `sudo apt-get install -y python3-pyqt6`. Debian 11 : lancer avec `~/Les_Nameks/.venv/bin/python`. |
 | `qt.qpa.plugin: Could not load the Qt platform plugin "xcb"` | Bibliothèque graphique manquante (surtout avec l'installation par pip). | `sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libgl1 libegl1`. |
-| `could not connect to display` | Application lancée par `ssh` ou depuis une console sans bureau. | Lancer depuis un terminal ouvert **dans le bureau graphique** de VM-APP (étape B.1, point 4). |
+| `could not connect to display` | Application lancée en `root` (après `su`, invite `root@…`), par `ssh` ou depuis une console sans bureau. | Taper `exit` pour revenir à l'utilisateur normal, puis lancer depuis un terminal ouvert **dans le bureau graphique** de VM-APP (étape B.1, point 4). Si le projet est dans `/root`, le recopier : `sudo cp -r /root/Les_Nameks ~/ && sudo chown -R $USER: ~/Les_Nameks`. |
 | `ssh: connect to host … Connection timed out` pendant la copie | Les VM ne se voient pas. | Vérifier l'Accès par pont des deux VM et leurs adresses (`ip -4 -brief address`). |
 | Le client envoie vers `10.128.238.191` | `NAMEKS_SERVER_HOST` n'est pas défini dans ce terminal. | Refaire `export NAMEKS_SERVER_HOST=…` dans le terminal qui lance l'application. |
 
